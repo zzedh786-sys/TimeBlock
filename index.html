@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Timeblock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,7 +37,7 @@
     --gl1: rgba(0,0,0,.14); --gl2: rgba(0,0,0,.05); --strip: rgba(0,0,0,.06); --shade: rgba(0,0,0,.07);
   }
   * { box-sizing: border-box; }
-  html, body, #root { height: 100%; margin: 0; }
+  html, body, #root { height: 100%; height: 100dvh; margin: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; overflow: hidden; -webkit-font-smoothing: antialiased; }
   button { font-family: inherit; color: inherit; cursor: pointer; }
   input, select { font-family: inherit; }
@@ -52,6 +52,15 @@
   .btn.danger:hover { background: rgba(242,139,130,.12); }
   .btn.ghost { background: transparent; border-color: transparent; }
   .btn.ghost:hover { background: var(--surface2); }
+  .btn.sm { padding: 6px 12px; font-size: 12.5px; flex: none; }
+  .hscroll { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .hscroll::-webkit-scrollbar { display: none; }
+  @media (max-width: 860px) {
+    .field { font-size: 16px; }
+    .icon-btn { width: 36px; height: 36px; }
+    .stamp { padding-top: 9px; padding-bottom: 9px; }
+    .menu-item { padding: 11px 14px; }
+  }
   .icon-btn { width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; display: inline-grid; place-items: center; font-size: 16px; color: var(--muted); }
   .icon-btn:hover { background: var(--surface2); color: var(--text); }
   .pills { display: inline-flex; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px; }
@@ -664,7 +673,7 @@ function FocusBar({ block, dateKey, left, onFinish, onExtend, onStop }) {
   const a = Math.abs(secs), fmt = `${a >= 3600 ? Math.floor(a / 3600) + ':' : ''}${pad(Math.floor(a % 3600 / 60))}:${pad(a % 60)}`;
   const prog = same ? clamp((nowS - startS) / Math.max(1, endS - startS), 0, 1) : 0;
   return (
-    <div style={{ position: 'fixed', bottom: 20, left, zIndex: 90, width: 300, background: 'var(--surface2)', border: `1px solid ${over ? 'var(--warn)' : 'var(--line-strong)'}`, borderRadius: 14, padding: '12px 14px', boxShadow: '0 12px 32px rgba(0,0,0,.45)' }}>
+    <div style={{ position: 'fixed', bottom: 20, left, zIndex: 90, width: 'min(300px, calc(100vw - 24px))', background: 'var(--surface2)', border: `1px solid ${over ? 'var(--warn)' : 'var(--line-strong)'}`, borderRadius: 14, padding: '12px 14px', boxShadow: '0 12px 32px rgba(0,0,0,.45)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ width: 8, height: 8, borderRadius: '50%', background: block.color }} />
         <div style={{ flex: 1, fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{block.title}</div>
@@ -707,7 +716,7 @@ function InsightsModal({ days, cur, onClose }) {
   return (
     <Modal title="Insights" onClose={onClose} width={520}>
       <div className="pills" style={{ marginBottom: 14 }}>{['day', 'week', 'month'].map(r => <button key={r} className={'pill' + (range === r ? ' on' : '')} onClick={() => setRange(r)}>{r[0].toUpperCase() + r.slice(1)}</button>)}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(105px, 1fr))', gap: 8, marginBottom: 16 }}>
         <Kpi l="Planned" v={fmtDur(total)} sub={`${blocks.length} blocks`} />
         <Kpi l="Done" v={`${done}/${blocks.length}`} sub={blocks.length ? Math.round(done / blocks.length * 100) + '%' : '–'} />
         <Kpi l="Saved" v={fmtDur(saved)} sub="finishing early" />
@@ -746,8 +755,8 @@ function TemplatesModal({ tpls, dateLabel, dayCount, onSave, onApply, onDelete, 
       {tpls.length === 0 && <div style={{ color: 'var(--faint)', fontSize: 13 }}>No templates yet.</div>}
       {tpls.map(t => (
         <div key={t.id} style={{ background: 'var(--surface2)', borderRadius: 12, padding: '10px 12px', marginBottom: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ flex: 1 }}><div style={{ fontWeight: 500 }}>{t.name}</div><div className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{t.blocks.length} blocks · {fmtDur(t.blocks.reduce((a, b) => a + b.dur, 0))}</div></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 120 }}><div style={{ fontWeight: 500 }}>{t.name}</div><div className="mono" style={{ fontSize: 11, color: 'var(--muted)' }}>{t.blocks.length} blocks · {fmtDur(t.blocks.reduce((a, b) => a + b.dur, 0))}</div></div>
             <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onApply(t.id, 'merge')}>Add to {dateLabel}</button>
             <button className="btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => onApply(t.id, 'replace')}>Replace day</button>
             <button className="icon-btn" style={{ width: 26, height: 26 }} aria-label="Delete template" onClick={() => onDelete(t.id)}>✕</button>
@@ -783,13 +792,13 @@ function ShortcutsModal({ onClose }) {
   );
 }
 
-function SummaryBar({ st, hardStop }) {
+function SummaryBar({ st, hardStop, compact }) {
   if (!st.count) return null;
-  const chip = (txt, warn, key) => <span key={key} style={{ fontSize: 12, padding: '3px 10px', borderRadius: 999, border: `1px solid ${warn ? 'var(--warn)' : 'var(--line-strong)'}`, color: warn ? 'var(--warn)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{txt}</span>;
+  const chip = (txt, warn, key) => <span key={key} style={{ flex: 'none', fontSize: compact ? 11.5 : 12, padding: compact ? '2px 9px' : '3px 10px', borderRadius: 999, border: `1px solid ${warn ? 'var(--warn)' : 'var(--line-strong)'}`, color: warn ? 'var(--warn)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{txt}</span>;
   const r = 9, C = 2 * Math.PI * r, frac = st.done / st.count;
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 16px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-      <svg width="24" height="24" viewBox="0 0 24 24" aria-label="Progress"><circle cx="12" cy="12" r={r} fill="none" stroke="var(--surface3)" strokeWidth="3" /><circle cx="12" cy="12" r={r} fill="none" stroke="#81c995" strokeWidth="3" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - frac)} transform="rotate(-90 12 12)" /></svg>
+    <div className={compact ? 'hscroll' : ''} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: compact ? '6px 12px' : '8px 16px', borderBottom: '1px solid var(--line)', flexWrap: compact ? 'nowrap' : 'wrap' }}>
+      <svg style={{ flex: 'none' }} width="24" height="24" viewBox="0 0 24 24" aria-label="Progress"><circle cx="12" cy="12" r={r} fill="none" stroke="var(--surface3)" strokeWidth="3" /><circle cx="12" cy="12" r={r} fill="none" stroke="#81c995" strokeWidth="3" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - frac)} transform="rotate(-90 12 12)" /></svg>
       {chip(`✓ ${st.done}/${st.count} done`, false, 'd')}
       {chip(`⏱ ${fmtDur(st.planned)} planned`, false, 'p')}
       {st.saved > 0 && chip(`⚡ ${fmtDur(st.saved)} saved by finishing early`, false, 's')}
@@ -898,7 +907,7 @@ function MiniCal({ cur, onPick, days, hidden, view, todayKey }) {
 }
 
 /* ───────────── time grid (day + week) ───────────── */
-function TimeGrid({ dates, days, now, hardStop, workStart, hidden, onToggleDone, onEditBuf, onMove, onSetDay, onEdit, onMenu, onAddAt, onOpenDay, isWeek }) {
+function TimeGrid({ narrow, dates, days, now, hardStop, workStart, hidden, onToggleDone, onEditBuf, onMove, onSetDay, onEdit, onMenu, onAddAt, onOpenDay, isWeek }) {
   const scroller = useRef();
   const colRefs = useRef({});
   const [ghost, setGhost] = useState(null);
@@ -972,20 +981,21 @@ function TimeGrid({ dates, days, now, hardStop, workStart, hidden, onToggleDone,
   };
 
   const hours = Array.from({ length: 23 }, (_, i) => i + 1);
-  const minW = isWeek ? GUTTER + 7 * 128 : 0;
+  const G = narrow ? 44 : GUTTER;
+  const minW = isWeek ? G + 7 * (narrow ? 104 : 128) : 0;
 
   return (
     <div ref={scroller} style={{ flex: 1, overflow: 'auto', position: 'relative', userSelect: 'none' }}>
       <div style={{ minWidth: minW }}>
         {/* sticky day headers */}
         <div style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', background: 'var(--bg)', borderBottom: '1px solid var(--line-strong)' }}>
-          <div style={{ width: GUTTER, flex: 'none', position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 2 }} />
+          <div style={{ width: G, flex: 'none', position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 2 }} />
           {dates.map(d => {
             const k = dkey(d), isT = k === todayKey;
             return (
-              <div key={k} onClick={() => onOpenDay(d)} style={{ flex: 1, minWidth: 0, padding: '8px 0 8px', textAlign: 'center', cursor: isWeek ? 'pointer' : 'default', borderLeft: '1px solid var(--line)', background: isT ? 'rgba(138,180,248,.07)' : 'transparent' }}>
+              <div key={k} onClick={() => onOpenDay(d)} style={{ flex: 1, minWidth: 0, padding: narrow ? '4px 0' : '8px 0 8px', textAlign: 'center', cursor: isWeek ? 'pointer' : 'default', borderLeft: '1px solid var(--line)', background: isT ? 'rgba(138,180,248,.07)' : 'transparent' }}>
                 <div style={{ fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: isT ? 'var(--accent)' : 'var(--muted)', fontWeight: 500 }}>{DOW[d.getDay()]}</div>
-                <div style={{ width: 36, height: 36, margin: '2px auto 0', borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 20, background: isT ? 'var(--accent)' : 'transparent', color: isT ? 'var(--accent-ink)' : 'var(--text)', fontWeight: isT ? 700 : 400 }}>{d.getDate()}</div>
+                <div style={{ width: narrow ? 30 : 36, height: narrow ? 30 : 36, margin: '2px auto 0', borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: narrow ? 16 : 20, background: isT ? 'var(--accent)' : 'transparent', color: isT ? 'var(--accent-ink)' : 'var(--text)', fontWeight: isT ? 700 : 400 }}>{d.getDate()}</div>
               </div>
             );
           })}
@@ -993,14 +1003,14 @@ function TimeGrid({ dates, days, now, hardStop, workStart, hidden, onToggleDone,
 
         <div style={{ display: 'flex', position: 'relative', height: DAY_PX }}>
           {/* time gutter */}
-          <div style={{ width: GUTTER, flex: 'none', position: 'sticky', left: 0, zIndex: 25, background: 'var(--bg)', height: DAY_PX }}>
+          <div style={{ width: G, flex: 'none', position: 'sticky', left: 0, zIndex: 25, background: 'var(--bg)', height: DAY_PX }}>
             {hours.filter(h => !(hasToday && Math.abs(h * 60 - nowMin) < 14)).map(h => (
-              <div key={h} className="mono" style={{ position: 'absolute', top: h * HOUR_PX - 7, right: 10, fontSize: 10.5, color: 'var(--faint)', letterSpacing: '.02em' }}>
+              <div key={h} className="mono" style={{ position: 'absolute', top: h * HOUR_PX - 7, right: narrow ? 5 : 10, fontSize: narrow ? 9.5 : 10.5, color: 'var(--faint)', letterSpacing: '.02em' }}>
                 {h % 12 || 12} {h >= 12 ? 'pm' : 'am'}
               </div>
             ))}
             {hasToday && (
-              <div className="mono" style={{ position: 'absolute', top: nowMin * PX_MIN - 9, right: 4, background: 'var(--now)', color: '#fff', fontSize: 10, padding: '2px 5px', borderRadius: 4, zIndex: 3 }}>{fmtT(nowMin)}</div>
+              <div className="mono" style={{ position: 'absolute', top: nowMin * PX_MIN - 9, right: 2, background: 'var(--now)', color: '#fff', fontSize: narrow ? 9 : 10, padding: '2px 4px', borderRadius: 4, zIndex: 3 }}>{fmtT(nowMin)}</div>
             )}
           </div>
 
@@ -1099,7 +1109,7 @@ function TimeGrid({ dates, days, now, hardStop, workStart, hidden, onToggleDone,
 }
 
 /* ───────────── month view ───────────── */
-function MonthView({ cur, days, hidden, todayKey, onOpenDay }) {
+function MonthView({ narrow, cur, days, hidden, todayKey, onOpenDay }) {
   const first = startOfWeek(new Date(cur.getFullYear(), cur.getMonth(), 1));
   const cells = Array.from({ length: 42 }, (_, i) => addDays(first, i));
   return (
@@ -1111,18 +1121,23 @@ function MonthView({ cur, days, hidden, todayKey, onOpenDay }) {
         {cells.map(d => {
           const k = dkey(d), list = (days[k] || []).filter(b => !hidden.includes(b.cat)).sort(byStart), isT = k === todayKey, inMonth = d.getMonth() === cur.getMonth();
           return (
-            <div key={k} data-day={k} className="cell" onClick={() => onOpenDay(d)} style={{ borderRight: '1px solid var(--line)', borderBottom: '1px solid var(--line)', padding: '4px 5px', cursor: 'pointer', overflow: 'hidden', opacity: inMonth ? 1 : .45, minWidth: 0 }}>
+            <div key={k} data-day={k} className="cell" onClick={() => onOpenDay(d)} style={{ borderRight: '1px solid var(--line)', borderBottom: '1px solid var(--line)', padding: narrow ? '3px 2px' : '4px 5px', cursor: 'pointer', overflow: 'hidden', opacity: inMonth ? 1 : .45, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 2 }}>
                 <span style={{ width: 24, height: 24, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: isT ? 700 : 400, background: isT ? 'var(--accent)' : 'transparent', color: isT ? 'var(--accent-ink)' : 'var(--text)' }}>{d.getDate()}</span>
               </div>
-              {list.slice(0, 3).map(b => (
+              {narrow ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', padding: '2px 1px' }}>
+                  {list.slice(0, 8).map(b => <span key={b.id} style={{ width: 7, height: 7, borderRadius: '50%', background: b.status === 'tentative' ? 'transparent' : b.color, border: `1.5px solid ${b.color}`, opacity: b.done ? .4 : 1 }} />)}
+                  {list.length > 8 && <span style={{ fontSize: 9, color: 'var(--muted)' }}>+{list.length - 8}</span>}
+                </div>
+              ) : list.slice(0, 3).map(b => (
                 <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, marginBottom: 2, padding: '1px 5px', borderRadius: 4, background: b.status === 'tentative' ? 'transparent' : b.color + '30', border: b.status === 'tentative' ? `1px dashed ${b.color}` : '1px solid transparent', whiteSpace: 'nowrap', overflow: 'hidden' }}>
                   <span style={{ width: 6, height: 6, borderRadius: '50%', background: b.color, flex: 'none' }} />
                   <span className="mono" style={{ color: 'var(--muted)', fontSize: 9.5, flex: 'none' }}>{fmtT(b.start).replace(' ', '')}</span>
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.title}</span>
                 </div>
               ))}
-              {list.length > 3 && <div style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 5 }}>+{list.length - 3} more</div>}
+              {!narrow && list.length > 3 && <div style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 5 }}>+{list.length - 3} more</div>}
             </div>
           );
         })}
@@ -1638,7 +1653,7 @@ function App() {
     <div style={{ display: 'flex', height: '100%' }}>
       {narrow && sideOpen && <div onClick={() => setSideOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 94 }} />}
       {/* sidebar */}
-      <aside style={{ width: 264, flex: 'none', borderRight: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', flexDirection: 'column', padding: '14px 12px', gap: 14, overflow: 'auto', ...sideStyle }}>
+      <aside style={{ width: narrow ? 'min(300px, 86vw)' : 264, flex: 'none', borderRight: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', flexDirection: 'column', padding: '14px 12px', gap: 14, overflow: 'auto', ...sideStyle }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 6px' }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#8ab4f8,#c58af9)', display: 'grid', placeItems: 'center', color: '#0c1c3a', fontWeight: 700, fontSize: 14 }}>▤</div>
           <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: '-.01em' }}>Timeblock</div>
@@ -1720,45 +1735,75 @@ function App() {
 
       {/* main */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
-          {narrow && <button className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Open menu">☰</button>}
-          <button className="btn" onClick={() => setCur(new Date())}>Today</button>
-          <div style={{ display: 'flex' }}>
-            <button className="icon-btn" onClick={() => nav(-1)} aria-label="Previous">‹</button>
-            <button className="icon-btn" onClick={() => nav(1)} aria-label="Next">›</button>
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 400, letterSpacing: '-.01em', marginRight: 'auto', minWidth: 0 }}>{title}</div>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', border: '1px solid var(--line-strong)', borderRadius: 999, padding: '3px 4px 3px 12px' }}>
-            <span style={{ color: 'var(--warn)' }}>⛔ Hard stop</span>
-            <input type="time" step="900" value={cfg.hardStop} onChange={e => e.target.value && patchCfg({ hardStop: e.target.value })} className="mono"
-              style={{ background: 'var(--surface2)', border: 0, borderRadius: 999, color: 'var(--text)', padding: '4px 10px', fontSize: 12, outline: 'none' }} />
-          </label>
-          <button className="btn" onClick={() => setModal({ type: 'late' })}>⏰ Running late</button>
-          <button className="btn" onClick={() => { if (view === 'month') setView('day'); setModal({ type: 'reopt' }); }}>✦ Re-optimize</button>
-          {fb && <button className="btn" onClick={user ? () => setModal({ type: 'account' }) : signIn} title={user ? user.email : 'Sign in with Google to save your data in the cloud'} style={sync === 'error' || sync === 'toolarge' ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : {}}>☁ {user ? (SYNC_LABEL[sync] || '').replace(' — will sync later', '') : 'Sign in to sync'}</button>}
-          <button className="btn" title="Undo last change (⌘/Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!canUndo}
-            style={canUndo ? { color: 'var(--accent)', borderColor: 'var(--accent)', background: 'rgba(138,180,248,.10)' } : { opacity: .45, cursor: 'default' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" /></svg>
-            Undo
-          </button>
-          <div style={{ position: 'relative' }}>
-            <button className="icon-btn" title="More" onClick={() => setMoreOpen(o => !o)} aria-label="More" style={{ fontSize: 20 }}>⋯</button>
-            {moreOpen && (
-              <>
-                <div onMouseDown={() => setMoreOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 110 }} />
-                <div style={{ position: 'absolute', right: 0, top: 38, width: 250, zIndex: 111, background: 'var(--surface2)', border: '1px solid var(--line-strong)', borderRadius: 12, padding: '6px 0', boxShadow: '0 12px 32px rgba(0,0,0,.45)' }}>
-                  {moreItems.map((a, i) => a === '-' ? <div key={i} style={{ height: 1, background: 'var(--line-strong)', margin: '6px 0' }} /> :
-                    <button key={i} className="menu-item" onClick={() => { setMoreOpen(false); a.run(); }}><span style={{ width: 16, textAlign: 'center' }}>{a.icon}</span>{a.label}</button>)}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="pills">
-            {['day', 'week', 'month'].map(v => <button key={v} className={'pill' + (view === v ? ' on' : '')} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
-          </div>
-        </header>
+        {(() => {
+          const compactTitle = view === 'month' ? `${MONTHS[cur.getMonth()].slice(0, 3)} ${cur.getFullYear()}` : view === 'day' ? cur.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : title;
+          const cls = narrow ? 'btn sm' : 'btn';
+          const hardStopEl = (
+            <label style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', border: '1px solid var(--line-strong)', borderRadius: 999, padding: narrow ? '2px 3px 2px 11px' : '3px 4px 3px 12px' }}>
+              <span style={{ color: 'var(--warn)', whiteSpace: 'nowrap' }}>⛔ Hard stop</span>
+              <input type="time" step="900" value={cfg.hardStop} onChange={e => e.target.value && patchCfg({ hardStop: e.target.value })} className="mono"
+                style={{ background: 'var(--surface2)', border: 0, borderRadius: 999, color: 'var(--text)', padding: '4px 8px', fontSize: 12, outline: 'none' }} />
+            </label>
+          );
+          const lateEl = <button className={cls} onClick={() => setModal({ type: 'late' })}>⏰ Running late</button>;
+          const reoptEl = <button className={cls} onClick={() => { if (view === 'month') setView('day'); setModal({ type: 'reopt' }); }}>✦ Re-optimize</button>;
+          const syncEl = fb && <button className={cls} onClick={user ? () => setModal({ type: 'account' }) : signIn} title={user ? user.email : 'Sign in with Google to save your data in the cloud'} style={sync === 'error' || sync === 'toolarge' ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : {}}>☁ {user ? (SYNC_LABEL[sync] || '').replace(' — will sync later', '') : 'Sign in to sync'}</button>;
+          const undoEl = (
+            <button className={cls} title="Undo last change (⌘/Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!canUndo}
+              style={canUndo ? { color: 'var(--accent)', borderColor: 'var(--accent)', background: 'rgba(138,180,248,.10)' } : { opacity: .45, cursor: 'default' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" /></svg>
+              Undo
+            </button>
+          );
+          const moreEl = (
+            <div style={{ position: 'relative', flex: 'none' }}>
+              <button className="icon-btn" title="More" onClick={() => setMoreOpen(o => !o)} aria-label="More" style={{ fontSize: 20 }}>⋯</button>
+              {moreOpen && (
+                <>
+                  <div onMouseDown={() => setMoreOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 110 }} />
+                  <div style={{ position: 'absolute', right: 0, top: 38, width: 250, maxWidth: '80vw', zIndex: 111, background: 'var(--surface2)', border: '1px solid var(--line-strong)', borderRadius: 12, padding: '6px 0', boxShadow: '0 12px 32px rgba(0,0,0,.45)' }}>
+                    {moreItems.map((a, i) => a === '-' ? <div key={i} style={{ height: 1, background: 'var(--line-strong)', margin: '6px 0' }} /> :
+                      <button key={i} className="menu-item" onClick={() => { setMoreOpen(false); a.run(); }}><span style={{ width: 16, textAlign: 'center' }}>{a.icon}</span>{a.label}</button>)}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+          const pillsEl = (
+            <div className="pills" style={narrow ? { display: 'flex' } : {}}>
+              {['day', 'week', 'month'].map(v => <button key={v} className={'pill' + (view === v ? ' on' : '')} style={narrow ? { flex: 1, padding: '7px 0' } : {}} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
+            </div>
+          );
+          if (narrow) return (
+            <header style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px 8px', borderBottom: '1px solid var(--line)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Open menu" style={{ fontSize: 20 }}>☰</button>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 18, fontWeight: 500, letterSpacing: '-.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 4px' }}>{compactTitle}</div>
+                <button className="icon-btn" onClick={() => nav(-1)} aria-label="Previous" style={{ fontSize: 22 }}>‹</button>
+                <button className="icon-btn" onClick={() => nav(1)} aria-label="Next" style={{ fontSize: 22 }}>›</button>
+                <button className="btn sm" onClick={() => setCur(new Date())}>Today</button>
+                {moreEl}
+              </div>
+              {pillsEl}
+              <div className="hscroll" style={{ display: 'flex', gap: 6, margin: '0 -12px', padding: '0 12px' }}>
+                {undoEl}{syncEl}{lateEl}{reoptEl}{hardStopEl}
+              </div>
+            </header>
+          );
+          return (
+            <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
+              <button className="btn" onClick={() => setCur(new Date())}>Today</button>
+              <div style={{ display: 'flex' }}>
+                <button className="icon-btn" onClick={() => nav(-1)} aria-label="Previous">‹</button>
+                <button className="icon-btn" onClick={() => nav(1)} aria-label="Next">›</button>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 400, letterSpacing: '-.01em', marginRight: 'auto', minWidth: 0 }}>{title}</div>
+              {hardStopEl}{lateEl}{reoptEl}{syncEl}{undoEl}{moreEl}{pillsEl}
+            </header>
+          );
+        })()}
 
-        {view === 'day' && <SummaryBar st={stats} hardStop={hardStop} />}
+        {view === 'day' && <SummaryBar st={stats} hardStop={hardStop} compact={narrow} />}
         {carry.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'rgba(138,180,248,.09)', borderBottom: '1px solid var(--line)', fontSize: 13, flexWrap: 'wrap' }}>
             <span>↪ <b>{carry.length}</b> unfinished task{carry.length === 1 ? '' : 's'} from earlier days ({carry.slice(0, 2).map(b => b.title).join(', ')}{carry.length > 2 ? '…' : ''})</span>
@@ -1768,8 +1813,8 @@ function App() {
         )}
 
         {view === 'month'
-          ? <MonthView cur={cur} days={days} hidden={hidden} todayKey={todayKey} onOpenDay={d => { setCur(d); setView('day'); }} />
-          : <TimeGrid dates={dates} days={days} now={now} hardStop={hardStop} workStart={workStart} hidden={hidden} onToggleDone={toggleDone} onEditBuf={openBuf} isWeek={view === 'week'}
+          ? <MonthView narrow={narrow} cur={cur} days={days} hidden={hidden} todayKey={todayKey} onOpenDay={d => { setCur(d); setView('day'); }} />
+          : <TimeGrid narrow={narrow} dates={dates} days={days} now={now} hardStop={hardStop} workStart={workStart} hidden={hidden} onToggleDone={toggleDone} onEditBuf={openBuf} isWeek={view === 'week'}
               onMove={moveBlock} onSetDay={setDay} onEdit={openEdit} onMenu={setMenu} onAddAt={openAdd}
               onOpenDay={d => { setCur(d); setView('day'); }} />}
       </main>
@@ -1812,7 +1857,7 @@ function App() {
       )}
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#e8eaed', color: '#202124', borderRadius: 10, padding: '10px 16px', fontSize: 13, display: 'flex', gap: 14, alignItems: 'center', zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,.5)', animation: 'pop .14s ease-out' }}>
+        <div style={{ position: 'fixed', bottom: 'calc(24px + env(safe-area-inset-bottom))', left: '50%', transform: 'translateX(-50%)', maxWidth: 'calc(100vw - 24px)', background: '#e8eaed', color: '#202124', borderRadius: 10, padding: '10px 16px', fontSize: 13, display: 'flex', gap: 14, alignItems: 'center', zIndex: 200, boxShadow: '0 8px 24px rgba(0,0,0,.5)', animation: 'pop .14s ease-out' }}>
           {toast.msg}
           {toast.undo && <button onClick={() => { toast.undo(); }} style={{ background: 'transparent', border: 0, color: '#1a56c4', fontWeight: 700, padding: 0 }}>Undo</button>}
         </div>
