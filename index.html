@@ -87,7 +87,6 @@
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 /* ───────────── constants & helpers ───────────── */
-const BLANK = /[?&]blank\b/.test(location.search); // open the page with ?blank to start with no sample data
 const SLOT = 15, PX_MIN = 3.2, HOUR_PX = 192, DAY_PX = 1440 * PX_MIN, GUTTER = 64;
 const KEYS = { days: 'tb.days.v1', tasks: 'tb.tasks.v1', settings: 'tb.settings.v1', inbox: 'tb.inbox.v1', tpls: 'tb.daytpl.v1' };
 const CATS = {
@@ -299,52 +298,6 @@ function planReopt(list, isToday, nowMin, hardStop) {
 }
 
 /* ───────────── sample data & storage ───────────── */
-function mk(title, start, dur, cat, pri = 'med', status = 'confirmed', color) {
-  return { id: uid(), title, start: start * 60 | 0, dur, cat, pri, status, color: color || CATS[cat], overrun: false };
-}
-const T = (h, m = 0) => h * 60 + m;
-function sampleDays() {
-  const today = new Date();
-  const b = (title, s, dur, cat, pri, status, buf) => ({ id: uid(), title, start: s, dur, cat, pri: pri || 'med', status: status || 'confirmed', color: CATS[cat], overrun: false, buf: buf || 0 });
-  const d = {};
-  d[dkey(today)] = normalize([
-    b('Workout', T(7, 30), 45, 'Health', 'med', 'confirmed', 15),
-    b('Plan the day', T(8, 30), 30, 'Admin', 'high', 'confirmed', 15),
-    b('Deep work: product spec', T(9, 15), 120, 'Deep Work', 'high'),
-    b('Design sync', T(11, 30), 30, 'Meeting', 'med', 'confirmed', 15),
-    b('Lunch', T(12, 15), 45, 'Break', 'low'),
-    b('Inbox & admin', T(13, 15), 45, 'Admin', 'low'),
-    b('Team retro', T(14, 15), 60, 'Meeting', 'med', 'tentative'),
-    b('Read: design systems', T(15, 30), 45, 'Learning', 'low', 'tentative'),
-    b('Weekly planning', T(16, 30), 30, 'Admin', 'med'),
-    b('Cook dinner', T(17, 15), 45, 'Personal', 'med'),
-  ]);
-  d[dkey(addDays(today, -1))] = normalize([
-    b('Morning run', T(7), 45, 'Health'), b('Deep work: API design', T(9), 150, 'Deep Work', 'high'),
-    b('Lunch', T(12, 15), 45, 'Break', 'low'), b('1:1 with Sam', T(14), 30, 'Meeting'),
-  ]);
-  d[dkey(addDays(today, 1))] = normalize([
-    b('Standup', T(9), 15, 'Meeting'), b('Deep work: prototype', T(9, 45), 135, 'Deep Work', 'high'),
-    b('Lunch', T(12, 30), 45, 'Break', 'low'), b('Client call', T(14), 60, 'Meeting', 'high', 'tentative'),
-    b('Yoga', T(17, 30), 45, 'Health'),
-  ]);
-  d[dkey(addDays(today, 2))] = normalize([
-    b('Workshop prep', T(10), 90, 'Deep Work'), b('Lunch', T(12, 30), 45, 'Break', 'low'),
-    b('Review PRs', T(14), 60, 'Admin'), b('Dentist', T(16), 60, 'Personal', 'med', 'tentative'),
-  ]);
-  d[dkey(addDays(today, 3))] = normalize([b('Quarterly review', T(10), 120, 'Meeting', 'high'), b('Read: Shape Up', T(14), 45, 'Learning', 'low')]);
-  d[dkey(addDays(today, -2))] = normalize([b('Deep work: research', T(9, 30), 120, 'Deep Work', 'high'), b('Team lunch', T(12), 60, 'Break', 'low')]);
-  d[dkey(addDays(today, 7))] = normalize([b('Offsite planning', T(10), 90, 'Meeting'), b('Gym', T(18), 60, 'Health')]);
-  d[dkey(addDays(today, -6))] = normalize([b('Sprint demo', T(15), 60, 'Meeting'), b('Deep work', T(10), 120, 'Deep Work', 'high')]);
-  Object.keys(d).forEach(k => { if (k < dkey(today)) d[k] = d[k].map(x => (x.title === '1:1 with Sam' ? x : { ...x, done: true })); });
-  d[dkey(today)] = d[dkey(today)].map(x => (x.title === 'Workout' ? { ...x, plan: 60, done: true } : x));
-  return d;
-}
-const sampleInbox = () => [
-  { id: uid(), title: 'Write Q4 project brief', dur: 90, cat: 'Deep Work', pri: 'high', color: CATS['Deep Work'] },
-  { id: uid(), title: 'Reply to vendor emails', dur: 30, cat: 'Admin', pri: 'med', color: CATS['Admin'] },
-  { id: uid(), title: 'Book dentist appointment', dur: 15, cat: 'Personal', pri: 'low', color: CATS['Personal'] },
-];
 const sampleTasks = () => [
   { id: uid(), name: 'Deep work', dur: 90, cat: 'Deep Work', pri: 'high', color: CATS['Deep Work'], uses: 6 },
   { id: uid(), name: 'Email triage', dur: 30, cat: 'Admin', pri: 'low', color: CATS['Admin'], uses: 5 },
@@ -1089,10 +1042,10 @@ function MonthView({ cur, days, hidden, todayKey, onOpenDay }) {
 
 /* ───────────── app ───────────── */
 function App() {
-  const [days, setDays] = useState(() => load(KEYS.days, () => (BLANK ? {} : sampleDays())));
+  const [days, setDays] = useState(() => load(KEYS.days, () => ({})));
   const [tasks, setTasks] = useState(() => load(KEYS.tasks, sampleTasks));
   const [settings, setSettings] = useState(() => load(KEYS.settings, () => ({})));
-  const [inbox, setInbox] = useState(() => load(KEYS.inbox, () => (BLANK ? [] : sampleInbox())));
+  const [inbox, setInbox] = useState(() => load(KEYS.inbox, () => []));
   const [tpls, setTpls] = useState(() => load(KEYS.tpls, () => []));
   const [view, setView] = useState('day');
   const [cur, setCur] = useState(() => new Date());
