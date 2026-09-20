@@ -77,6 +77,9 @@
   .cell:hover { background: var(--surface); }
   @keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } to { opacity: 1; transform: none; } }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -312,6 +315,36 @@ function load(key, fallback) {
   return fallback();
 }
 function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+/* ───────────── cloud sync (Firebase Auth + Firestore) ───────────── */
+// These web-app values are public identifiers; access is protected by Firestore security rules (users can only touch users/{their uid}).
+const FB_CONFIG = {
+  apiKey: 'AIzaSyBvPr2j-Q1anRs-XlIedG0Vaga74Imf9sk', authDomain: 'timeblock-64912.firebaseapp.com', projectId: 'timeblock-64912',
+  storageBucket: 'timeblock-64912.firebasestorage.app', messagingSenderId: '147260368556', appId: '1:147260368556:web:3d4bd3e9d306bfb9c7e109',
+};
+let fb = null;
+try { if (window.firebase) { firebase.initializeApp(FB_CONFIG); fb = { auth: firebase.auth(), db: firebase.firestore() }; } } catch (e) { fb = null; }
+const DEVICE = lsGet('tb.device.v1') || (() => { const d = uid(); lsSet('tb.device.v1', d); return d; })();
+async function gz(str) { return new Uint8Array(await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()); }
+async function gunz(bytes) { return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
+async function encodeBundle(bundle) {
+  const json = JSON.stringify(bundle);
+  if (window.CompressionStream) { try { return { gz: firebase.firestore.Blob.fromUint8Array(await gz(json)) }; } catch (e) {} }
+  return { json };
+}
+async function decodeBundle(d) {
+  const o = JSON.parse(d.gz ? await gunz(d.gz.toUint8Array()) : (d.json || '{}'));
+  return { v: 1, days: o.days || {}, tasks: o.tasks || [], inbox: o.inbox || [], tpls: o.tpls || [], settings: o.settings || {} };
+}
+const hasData = b => Object.values(b.days || {}).some(l => l.length) || (b.inbox || []).length > 0 || (b.tpls || []).length > 0;
+function mergeBundles(local, remote) {
+  const union = (mine, theirs) => { const m = new Map(); [...(theirs || []), ...(mine || [])].forEach(i => { if (!m.has(i.id)) m.set(i.id, i); }); return [...m.values()]; };
+  const days = {};
+  new Set([...Object.keys(local.days || {}), ...Object.keys(remote.days || {})]).forEach(k => { days[k] = union((local.days || {})[k], (remote.days || {})[k]).sort(byStart); });
+  return { v: 1, days, tasks: union(local.tasks, remote.tasks), inbox: union(local.inbox, remote.inbox), tpls: union(local.tpls, remote.tpls), settings: { ...local.settings, ...remote.settings } };
+}
 
 /* ───────────── energy gradient ───────────── */
 const PEAK = 'rgba(129,201,149,0.11)', DIP = 'rgba(126,134,200,0.12)', CLR = 'rgba(0,0,0,0)';
@@ -768,6 +801,39 @@ function SummaryBar({ st, hardStop }) {
   );
 }
 
+/* ───────────── account / sync dialogs ───────────── */
+function SyncChoiceModal({ onChoose }) {
+  return (
+    <Modal title="Cloud data found" onClose={() => {}} width={460}>
+      <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>Your account already has saved data, and this device has different data too. How should they be combined?</div>
+      {[['merge', 'Merge both (recommended)', 'Keep everything from the cloud and this device.'], ['cloud', 'Use the cloud copy', 'Replace what is on this device.'], ['device', 'Use this device’s data', 'Overwrite the cloud copy.']].map(([k, t, d]) => (
+        <button key={k} className="btn" style={{ display: 'block', width: '100%', textAlign: 'left', borderRadius: 12, marginBottom: 8, whiteSpace: 'normal' }} onClick={() => onChoose(k)}>
+          <div style={{ fontWeight: 500 }}>{t}</div><div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 400 }}>{d}</div>
+        </button>
+      ))}
+    </Modal>
+  );
+}
+const SYNC_LABEL = { off: 'Not syncing', syncing: 'Syncing…', synced: 'Synced ✓', offline: 'Offline — will sync later', error: 'Sync error', toolarge: 'Cloud copy too large' };
+function AccountModal({ user, status, onSyncNow, onSignOut, onClose }) {
+  return (
+    <Modal title="Account & sync" onClose={onClose} width={400}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+        {user.photo ? <img src={user.photo} alt="" referrerPolicy="no-referrer" style={{ width: 40, height: 40, borderRadius: '50%' }} /> : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)', color: 'var(--accent-ink)', display: 'grid', placeItems: 'center', fontWeight: 700 }}>{(user.name || user.email || '?')[0].toUpperCase()}</div>}
+        <div style={{ minWidth: 0 }}><div style={{ fontWeight: 500 }}>{user.name || 'Signed in'}</div><div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div></div>
+      </div>
+      <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
+        <div>Status: <b>{SYNC_LABEL[status] || status}</b></div>
+        <div style={{ color: 'var(--faint)', fontSize: 12, marginTop: 4 }}>Changes save to your account automatically and appear on every device where you sign in. A copy also stays on this device.</div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button className="btn ghost" onClick={onSignOut}>Sign out</button>
+        <button className="btn primary" onClick={onSyncNow}>Sync now</button>
+      </div>
+    </Modal>
+  );
+}
+
 /* ───────────── mini calendar ───────────── */
 function MiniCal({ cur, onPick, days, hidden, view, todayKey }) {
   const [mm, setMm] = useState(new Date(cur.getFullYear(), cur.getMonth(), 1));
@@ -1063,6 +1129,14 @@ function App() {
   const hist = useRef([]);
   const toastTimer = useRef();
   const jsonRef = useRef(), icsRef = useRef();
+  const [user, setUser] = useState(null);
+  const [sync, setSync] = useState(fb ? 'off' : 'unavailable');
+  const [syncChoice, setSyncChoice] = useState(null);
+  const revRef = useRef(parseInt(lsGet('tb.rev.v1') || '0', 10) || 0);
+  const dirtyRef = useRef(lsGet('tb.dirty.v1') === '1');
+  const readyRef = useRef(false);
+  const lastKeyRef = useRef('');
+  const bundleRef = useRef();
 
   const cfg = { hardStop: '18:00', workStart: '00:00', theme: 'dark', ...settings };
   useEffect(() => save(KEYS.days, days), [days]);
@@ -1074,6 +1148,96 @@ function App() {
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
   useEffect(() => { const h = () => setNarrow(window.innerWidth < 860); window.addEventListener('resize', h); return () => window.removeEventListener('resize', h); }, []);
   const patchCfg = patch => setSettings(s => ({ ...s, ...patch }));
+  const syncSettings = (({ focus, carryDismissed, ...rest }) => rest)(settings);
+  const syncSettingsKey = JSON.stringify(syncSettings);
+  bundleRef.current = { v: 1, days, tasks, inbox, tpls, settings: syncSettings };
+  const setDirty = v => { dirtyRef.current = v; lsSet('tb.dirty.v1', v ? '1' : '0'); };
+
+  /* ── cloud sync ── */
+  const pushNow = async uid => {
+    const bundle = bundleRef.current, enc = await encodeBundle(bundle);
+    const size = enc.gz ? enc.gz.toUint8Array().length : enc.json.length;
+    if (size > 950000) throw new Error('too-large');
+    const rev = revRef.current + 1;
+    await fb.db.collection('users').doc(uid).set({ ...enc, rev, deviceId: DEVICE, updatedAt: Date.now() });
+    revRef.current = rev; lsSet('tb.rev.v1', String(rev)); lastKeyRef.current = JSON.stringify(bundle); setDirty(false);
+  };
+  const applyBundle = (data, rev) => {
+    const d = { v: 1, days: data.days || {}, tasks: data.tasks || [], inbox: data.inbox || [], tpls: data.tpls || [], settings: data.settings || {} };
+    bundleRef.current = d; lastKeyRef.current = JSON.stringify(d);
+    daysRef.current = d.days; setDays(d.days); setTasks(d.tasks); inboxRef.current = d.inbox; setInbox(d.inbox); setTpls(d.tpls);
+    setSettings(s => ({ ...d.settings, focus: s.focus, carryDismissed: s.carryDismissed }));
+    revRef.current = rev; lsSet('tb.rev.v1', String(rev)); hist.current = []; setDirty(false);
+  };
+  const finishSync = uid => { lsSet('tb.syncuid.v1', uid); readyRef.current = true; setSync('synced'); };
+  const resolveChoice = async how => {
+    const { rd, rrev } = syncChoice; setSyncChoice(null);
+    try {
+      if (how === 'cloud') applyBundle(rd, rrev);
+      else if (how === 'device') { revRef.current = Math.max(revRef.current, rrev); await pushNow(user.uid); }
+      else { revRef.current = Math.max(revRef.current, rrev); applyBundle(mergeBundles(bundleRef.current, rd), revRef.current); await pushNow(user.uid); }
+      finishSync(user.uid);
+    } catch (e) { setSync('error'); }
+  };
+  const signIn = async () => {
+    if (!fb) { flash('Cloud sync is unavailable (Firebase could not load).'); return; }
+    const prov = new firebase.auth.GoogleAuthProvider();
+    try { await fb.auth.signInWithPopup(prov); }
+    catch (e) {
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') fb.auth.signInWithRedirect(prov);
+      else if (e.code === 'auth/unauthorized-domain') flash('This site is not an authorized domain in Firebase → Authentication → Settings.');
+      else if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') flash('Sign-in cancelled');
+      else flash('Sign-in failed: ' + (e.code || e.message));
+    }
+  };
+  const signOut = () => { setModal(null); if (fb) fb.auth.signOut(); flash('Signed out — your data stays on this device'); };
+  const syncNow = async () => {
+    if (!user || !readyRef.current) { flash('Still connecting…'); return; }
+    setSync('syncing');
+    try { await pushNow(user.uid); setSync('synced'); flash('Synced'); } catch (e) { setSync(e.message === 'too-large' ? 'toolarge' : 'error'); }
+  };
+  useEffect(() => { if (!fb) return; return fb.auth.onAuthStateChanged(u => setUser(u ? { uid: u.uid, name: u.displayName, email: u.email, photo: u.photoURL } : null)); }, []);
+  useEffect(() => {
+    if (!fb || !user) { readyRef.current = false; setSync(fb ? 'off' : 'unavailable'); return; }
+    let cancelled = false, unsub = null;
+    const ref = fb.db.collection('users').doc(user.uid);
+    const askChoice = (rd, rrev) => setSyncChoice({ rd, rrev });
+    readyRef.current = false; setSync('syncing');
+    (async () => {
+      try {
+        const snap = await ref.get(); if (cancelled) return;
+        if (!snap.exists) { await pushNow(user.uid); finishSync(user.uid); }
+        else {
+          const rd = await decodeBundle(snap.data()), rrev = snap.data().rev || 0;
+          const sameUser = lsGet('tb.syncuid.v1') === user.uid;
+          if (sameUser) {
+            if (rrev > revRef.current) { if (dirtyRef.current) askChoice(rd, rrev); else { applyBundle(rd, rrev); finishSync(user.uid); } }
+            else if (dirtyRef.current || rrev < revRef.current) { await pushNow(user.uid); finishSync(user.uid); }
+            else finishSync(user.uid);
+          } else if (!hasData(bundleRef.current)) { applyBundle(rd, rrev); finishSync(user.uid); }
+          else askChoice(rd, rrev);
+        }
+        if (cancelled) return;
+        unsub = ref.onSnapshot(s => {
+          if (!readyRef.current || !s.exists || s.metadata.hasPendingWrites) return;
+          const d = s.data();
+          if (d.deviceId === DEVICE || (d.rev || 0) <= revRef.current) return;
+          decodeBundle(d).then(rd => { if (dirtyRef.current) askChoice(rd, d.rev || 0); else { applyBundle(rd, d.rev || 0); flash('Updated from another device'); } });
+        });
+      } catch (e) { setSync('error'); }
+    })();
+    return () => { cancelled = true; if (unsub) unsub(); };
+  }, [user && user.uid]);
+  useEffect(() => {
+    if (!fb || !user) return;
+    if (JSON.stringify(bundleRef.current) === lastKeyRef.current) return;
+    setDirty(true);
+    if (!readyRef.current) return;
+    setSync(navigator.onLine ? 'syncing' : 'offline');
+    const t = setTimeout(async () => { try { await pushNow(user.uid); setSync('synced'); } catch (e) { setSync(e.message === 'too-large' ? 'toolarge' : navigator.onLine ? 'error' : 'offline'); } }, 1500);
+    return () => clearTimeout(t);
+  }, [days, tasks, inbox, tpls, syncSettingsKey]);
+  useEffect(() => { const on = () => { if (readyRef.current && dirtyRef.current && user) { setSync('syncing'); pushNow(user.uid).then(() => setSync('synced')).catch(() => setSync('error')); } }; window.addEventListener('online', on); return () => window.removeEventListener('online', on); }, [user]);
 
   const todayKey = dkey(now), curKey = dkey(cur);
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -1362,7 +1526,7 @@ function App() {
   });
 
   const clearAll = () => {
-    if (!window.confirm('Delete ALL blocks, pending tasks and day templates on this device? Export a backup first if unsure.')) return;
+    if (!window.confirm(user ? 'Delete ALL blocks, pending tasks and day templates? You are signed in, so this also clears your cloud copy. Export a backup first if unsure.' : 'Delete ALL blocks, pending tasks and day templates on this device? Export a backup first if unsure.')) return;
     hist.current = [];
     daysRef.current = {}; setDays({}); inboxRef.current = []; setInbox([]); setTpls([]); patchCfg({ focus: null, carryDismissed: null });
     flash('All data cleared — starting blank');
@@ -1539,6 +1703,7 @@ function App() {
           </label>
           <button className="btn" onClick={() => setModal({ type: 'late' })}>⏰ Running late</button>
           <button className="btn" onClick={() => { if (view === 'month') setView('day'); setModal({ type: 'reopt' }); }}>✦ Re-optimize</button>
+          {fb && <button className="btn" onClick={user ? () => setModal({ type: 'account' }) : signIn} title={user ? user.email : 'Sign in with Google to save your data in the cloud'} style={sync === 'error' || sync === 'toolarge' ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : {}}>☁ {user ? (SYNC_LABEL[sync] || '').replace(' — will sync later', '') : 'Sign in to sync'}</button>}
           <button className="icon-btn" title="Undo (⌘/Ctrl+Z)" onClick={undo} aria-label="Undo">↶</button>
           <div style={{ position: 'relative' }}>
             <button className="icon-btn" title="More" onClick={() => setMoreOpen(o => !o)} aria-label="More" style={{ fontSize: 20 }}>⋯</button>
@@ -1595,6 +1760,8 @@ function App() {
       {modal && modal.type === 'tpls' && <TemplatesModal tpls={tpls} dateLabel={curKey === todayKey ? 'today' : cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} dayCount={(days[curKey] || []).length} onSave={saveTpl} onApply={applyTpl} onDelete={id => setTpls(t => t.filter(x => x.id !== id))} onClose={() => setModal(null)} />}
       {modal && modal.type === 'settings' && <SettingsModal cfg={cfg} onChange={patchCfg} onClose={() => setModal(null)} />}
       {modal && modal.type === 'help' && <ShortcutsModal onClose={() => setModal(null)} />}
+      {modal && modal.type === 'account' && user && <AccountModal user={user} status={sync} onSyncNow={syncNow} onSignOut={signOut} onClose={() => setModal(null)} />}
+      {syncChoice && <SyncChoiceModal onChoose={resolveChoice} />}
 
       {focusBlock && <FocusBar block={focusBlock} dateKey={settings.focus.date} left={narrow ? 12 : 280}
         onFinish={() => setModal({ type: 'finish', date: settings.focus.date, id: settings.focus.id })}
