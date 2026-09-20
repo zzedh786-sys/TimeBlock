@@ -801,6 +801,31 @@ function SummaryBar({ st, hardStop }) {
   );
 }
 
+/* ───────────── first-run welcome ───────────── */
+function WelcomeScreen({ onSignIn, onSkip }) {
+  const perk = (icon, t) => <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 14, color: 'var(--muted)' }}><span style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--surface3)', display: 'grid', placeItems: 'center', fontSize: 15 }}>{icon}</span>{t}</div>;
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'var(--bg)', display: 'grid', placeItems: 'center', padding: 20, overflow: 'auto' }}>
+      <div style={{ width: 420, maxWidth: '100%', textAlign: 'center', animation: 'pop .25s ease-out' }}>
+        <div style={{ width: 64, height: 64, margin: '0 auto 18px', borderRadius: 18, background: 'linear-gradient(135deg,#8ab4f8,#c58af9)', display: 'grid', placeItems: 'center', color: '#0c1c3a', fontWeight: 700, fontSize: 30 }}>▤</div>
+        <div style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-.02em', marginBottom: 6 }}>Welcome to Timeblock</div>
+        <div style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 26 }}>Plan your day in focused blocks. Sign in once and your calendar follows you everywhere.</div>
+        <div style={{ display: 'grid', gap: 12, textAlign: 'left', margin: '0 auto 28px', width: 'fit-content' }}>
+          {perk('🔄', 'Syncs between your phone and laptop')}
+          {perk('☁', 'Backed up to your account automatically')}
+          {perk('🔒', 'Private — only you can see your data')}
+        </div>
+        <button onClick={onSignIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: '#fff', color: '#1f1f1f', border: '1px solid #dadce0', borderRadius: 999, padding: '12px 26px', fontSize: 15, fontWeight: 500, boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
+          <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Continue with Google
+        </button>
+        <div><button onClick={onSkip} style={{ background: 'none', border: 0, color: 'var(--muted)', fontSize: 13, marginTop: 18, textDecoration: 'underline', padding: 6 }}>Skip for now — use on this device only</button></div>
+        <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6 }}>You can sign in later from the ☁ button at the top.</div>
+      </div>
+    </div>
+  );
+}
+
 /* ───────────── account / sync dialogs ───────────── */
 function SyncChoiceModal({ onChoose }) {
   return (
@@ -1130,6 +1155,9 @@ function App() {
   const toastTimer = useRef();
   const jsonRef = useRef(), icsRef = useRef();
   const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [welcomed, setWelcomed] = useState(() => lsGet('tb.welcomed.v1') === '1');
+  const [canUndo, setCanUndo] = useState(false);
   const [sync, setSync] = useState(fb ? 'off' : 'unavailable');
   const [syncChoice, setSyncChoice] = useState(null);
   const revRef = useRef(parseInt(lsGet('tb.rev.v1') || '0', 10) || 0);
@@ -1167,7 +1195,7 @@ function App() {
     bundleRef.current = d; lastKeyRef.current = JSON.stringify(d);
     daysRef.current = d.days; setDays(d.days); setTasks(d.tasks); inboxRef.current = d.inbox; setInbox(d.inbox); setTpls(d.tpls);
     setSettings(s => ({ ...d.settings, focus: s.focus, carryDismissed: s.carryDismissed }));
-    revRef.current = rev; lsSet('tb.rev.v1', String(rev)); hist.current = []; setDirty(false);
+    revRef.current = rev; lsSet('tb.rev.v1', String(rev)); hist.current = []; setCanUndo(false); setDirty(false);
   };
   const finishSync = uid => { lsSet('tb.syncuid.v1', uid); readyRef.current = true; setSync('synced'); };
   const resolveChoice = async how => {
@@ -1196,7 +1224,9 @@ function App() {
     setSync('syncing');
     try { await pushNow(user.uid); setSync('synced'); flash('Synced'); } catch (e) { setSync(e.message === 'too-large' ? 'toolarge' : 'error'); }
   };
-  useEffect(() => { if (!fb) return; return fb.auth.onAuthStateChanged(u => setUser(u ? { uid: u.uid, name: u.displayName, email: u.email, photo: u.photoURL } : null)); }, []);
+  useEffect(() => { if (!fb) return; return fb.auth.onAuthStateChanged(u => { setUser(u ? { uid: u.uid, name: u.displayName, email: u.email, photo: u.photoURL } : null); setAuthReady(true); }); }, []);
+  useEffect(() => { if (user && !welcomed) { lsSet('tb.welcomed.v1', '1'); setWelcomed(true); } }, [user]);
+  const skipWelcome = () => { lsSet('tb.welcomed.v1', '1'); setWelcomed(true); };
   useEffect(() => {
     if (!fb || !user) { readyRef.current = false; setSync(fb ? 'off' : 'unavailable'); return; }
     let cancelled = false, unsub = null;
@@ -1255,12 +1285,14 @@ function App() {
   const commit = (next, opts = {}) => {
     hist.current.push({ days: daysRef.current, inbox: opts.inbox ? inboxRef.current : undefined });
     if (hist.current.length > 40) hist.current.shift();
+    setCanUndo(true);
     daysRef.current = next; setDays(next);
     if (opts.inbox) { inboxRef.current = opts.inbox; setInbox(opts.inbox); }
   };
   const undo = useCallback(() => {
     const e = hist.current.pop();
     if (!e) { flash('Nothing to undo'); return; }
+    setCanUndo(hist.current.length > 0);
     daysRef.current = e.days; setDays(e.days);
     if (e.inbox) { inboxRef.current = e.inbox; setInbox(e.inbox); }
     flash('Undone');
@@ -1511,7 +1543,7 @@ function App() {
       const o = JSON.parse(txt);
       if (!o || typeof o.days !== 'object') throw new Error('bad');
       if (!window.confirm('Replace ALL current data with this backup?')) return;
-      hist.current = [];
+      hist.current = []; setCanUndo(false);
       daysRef.current = o.days; setDays(o.days);
       if (o.tasks) setTasks(o.tasks); if (o.settings) setSettings(o.settings); if (o.inbox) setInbox(o.inbox); if (o.tpls) setTpls(o.tpls);
       flash('Backup restored');
@@ -1527,7 +1559,7 @@ function App() {
 
   const clearAll = () => {
     if (!window.confirm(user ? 'Delete ALL blocks, pending tasks and day templates? You are signed in, so this also clears your cloud copy. Export a backup first if unsure.' : 'Delete ALL blocks, pending tasks and day templates on this device? Export a backup first if unsure.')) return;
-    hist.current = [];
+    hist.current = []; setCanUndo(false);
     daysRef.current = {}; setDays({}); inboxRef.current = []; setInbox([]); setTpls([]); patchCfg({ focus: null, carryDismissed: null });
     flash('All data cleared — starting blank');
   };
@@ -1704,7 +1736,11 @@ function App() {
           <button className="btn" onClick={() => setModal({ type: 'late' })}>⏰ Running late</button>
           <button className="btn" onClick={() => { if (view === 'month') setView('day'); setModal({ type: 'reopt' }); }}>✦ Re-optimize</button>
           {fb && <button className="btn" onClick={user ? () => setModal({ type: 'account' }) : signIn} title={user ? user.email : 'Sign in with Google to save your data in the cloud'} style={sync === 'error' || sync === 'toolarge' ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : {}}>☁ {user ? (SYNC_LABEL[sync] || '').replace(' — will sync later', '') : 'Sign in to sync'}</button>}
-          <button className="icon-btn" title="Undo (⌘/Ctrl+Z)" onClick={undo} aria-label="Undo">↶</button>
+          <button className="btn" title="Undo last change (⌘/Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!canUndo}
+            style={canUndo ? { color: 'var(--accent)', borderColor: 'var(--accent)', background: 'rgba(138,180,248,.10)' } : { opacity: .45, cursor: 'default' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" /></svg>
+            Undo
+          </button>
           <div style={{ position: 'relative' }}>
             <button className="icon-btn" title="More" onClick={() => setMoreOpen(o => !o)} aria-label="More" style={{ fontSize: 20 }}>⋯</button>
             {moreOpen && (
@@ -1762,6 +1798,7 @@ function App() {
       {modal && modal.type === 'help' && <ShortcutsModal onClose={() => setModal(null)} />}
       {modal && modal.type === 'account' && user && <AccountModal user={user} status={sync} onSyncNow={syncNow} onSignOut={signOut} onClose={() => setModal(null)} />}
       {syncChoice && <SyncChoiceModal onChoose={resolveChoice} />}
+      {fb && authReady && !user && !welcomed && <WelcomeScreen onSignIn={signIn} onSkip={skipWelcome} />}
 
       {focusBlock && <FocusBar block={focusBlock} dateKey={settings.focus.date} left={narrow ? 12 : 280}
         onFinish={() => setModal({ type: 'finish', date: settings.focus.date, id: settings.focus.id })}
