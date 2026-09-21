@@ -120,6 +120,10 @@ const CATS = {
   'Deep Work': '#c58af9', 'Meeting': '#8ab4f8', 'Admin': '#fdd663', 'Health': '#81c995',
   'Break': '#78d9ec', 'Personal': '#ff8bcb', 'Learning': '#fcad70',
 };
+const DEFAULT_CAT_LIST = Object.entries(CATS).map(([name, color]) => ({ name, color }));
+// CATS is edited in place so every component sees the user's current categories (settings.cats).
+function applyCats(list) { Object.keys(CATS).forEach(k => delete CATS[k]); list.forEach(c => { CATS[c.name] = c.color; }); }
+const firstCat = () => Object.keys(CATS)[0];
 const SWATCHES = ['#8ab4f8', '#81c995', '#f28b82', '#fdd663', '#c58af9', '#78d9ec', '#ff8bcb', '#fcad70', '#b5e08a', '#bdc1c6'];
 const PRI = { high: { n: 0, label: 'High', mark: '!!!' }, med: { n: 1, label: 'Medium', mark: '!!' }, low: { n: 2, label: 'Low', mark: '!' } };
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -284,7 +288,7 @@ function parseICS(text) {
         let en = parseDT(ev.DTEND); if (!en || en <= st) en = new Date(st.getTime() + 3600000);
         const k = dkey(st), start = st.getHours() * 60 + st.getMinutes();
         const end = dkey(en) === k ? en.getHours() * 60 + en.getMinutes() : 1440;
-        const cat = CATS[ev.CATEGORIES] ? ev.CATEGORIES : 'Meeting';
+        const cat = CATS[ev.CATEGORIES] ? ev.CATEGORIES : firstCat();
         (out[k] = out[k] || []).push({ id: uid(), title: ev.SUMMARY || 'Untitled', start, dur: clamp(end - start, 1, 1440 - start), cat, pri: 'med', color: CATS[cat], status: ev.STATUS === 'TENTATIVE' ? 'tentative' : 'confirmed', overrun: false, buf: 0, notes: ev.DESCRIPTION || '' });
         n++;
       }
@@ -450,7 +454,7 @@ function BlockModal({ mode, initial, onSave, onDelete, onClose }) {
           <div>
             <label className="lbl">Category</label>
             <select className="field" value={f.cat} onChange={e => { set('cat', e.target.value); if (!colorTouched) set('color', CATS[e.target.value]); }}>
-              {Object.keys(CATS).map(c => <option key={c}>{c}</option>)}
+              {!CATS[f.cat] && <option>{f.cat}</option>}{Object.keys(CATS).map(c => <option key={c}>{c}</option>)}
             </select>
           </div>
           <div>
@@ -747,7 +751,7 @@ function InsightsModal({ days, cur, onClose }) {
         {cats.map(([c, m]) => (
           <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, fontSize: 13 }}>
             <span style={{ width: 84 }}>{c}</span>
-            <div style={{ flex: 1, height: 10, background: 'var(--surface3)', borderRadius: 5 }}><div style={{ width: `${m / cats[0][1] * 100}%`, height: 10, borderRadius: 5, background: CATS[c] }} /></div>
+            <div style={{ flex: 1, height: 10, background: 'var(--surface3)', borderRadius: 5 }}><div style={{ width: `${m / cats[0][1] * 100}%`, height: 10, borderRadius: 5, background: CATS[c] || '#bdc1c6' }} /></div>
             <span className="mono" style={{ width: 64, textAlign: 'right', color: 'var(--muted)', fontSize: 12 }}>{fmtDur(m)}</span>
           </div>
         ))}
@@ -1061,6 +1065,95 @@ function StatsView({ days, todayKey, nowMin }) {
           )))}
       </div>
     </div>
+  );
+}
+
+/* ───────────── collapsible sidebar section header ───────────── */
+function SecHeader({ title, open, onToggle, right }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 4px' }}>
+      <button onClick={onToggle} aria-expanded={open} style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 0, background: 'none', border: 0, padding: '5px 2px', textAlign: 'left', color: 'var(--muted)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.08em' }}>
+        <span style={{ display: 'inline-block', fontSize: 9, transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>{title}
+      </button>
+      {open && right}
+    </div>
+  );
+}
+
+/* ───────────── manage categories ───────────── */
+function CategoriesModal({ cats, counts, others, startNew, onAdd, onEdit, onDelete, onClose }) {
+  const [editing, setEditing] = useState(startNew ? '__new' : null);
+  const [form, setForm] = useState({ name: '', color: SWATCHES[0] });
+  const [err, setErr] = useState('');
+  const [deleting, setDeleting] = useState(null);
+  const [target, setTarget] = useState('');
+  const beginNew = () => { setEditing('__new'); setForm({ name: '', color: SWATCHES[cats.length % SWATCHES.length] }); setErr(''); setDeleting(null); };
+  const beginEdit = c => { setEditing(c.name); setForm({ name: c.name, color: c.color }); setErr(''); setDeleting(null); };
+  useEffect(() => { if (startNew) beginNew(); }, []);
+  const validate = () => {
+    const n = form.name.trim();
+    if (!n) return 'Give the category a name.';
+    if (n.length > 24) return 'Keep the name to 24 characters or fewer.';
+    if (n === '__proto__') return 'That name isn’t allowed.';
+    if (cats.some(c => c.name.toLowerCase() === n.toLowerCase() && c.name !== editing)) return 'A category with that name already exists.';
+    return '';
+  };
+  const save = e => {
+    e.preventDefault();
+    const m = validate(); if (m) { setErr(m); return; }
+    const n = form.name.trim();
+    if (editing === '__new') onAdd(n, form.color); else onEdit(editing, n, form.color);
+    setEditing(null);
+  };
+  const editor = (
+    <form onSubmit={save} style={{ background: 'var(--surface2)', borderRadius: 12, padding: 12, marginBottom: 10 }}>
+      <label className="lbl">{editing === '__new' ? 'New category' : 'Rename / recolor'}</label>
+      <input className="field" autoFocus maxLength={24} value={form.name} onChange={e => { setForm({ ...form, name: e.target.value }); setErr(''); }} placeholder="e.g. Errands" style={{ marginBottom: 10 }} />
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+        {SWATCHES.map(c => <button type="button" key={c} aria-label={c} onClick={() => setForm({ ...form, color: c })} style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: form.color === c ? '2px solid var(--text)' : '2px solid transparent', outline: form.color === c ? '2px solid ' + c : 'none', outlineOffset: 1, padding: 0 }} />)}
+        <label title="Pick any color" style={{ width: 26, height: 26, borderRadius: '50%', border: '2px dashed var(--line-strong)', display: 'grid', placeItems: 'center', fontSize: 13, color: 'var(--muted)', position: 'relative', overflow: 'hidden' }}>＋
+          <input type="color" value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
+        </label>
+      </div>
+      {err && <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 8 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button type="button" className="btn ghost sm" onClick={() => setEditing(null)}>Cancel</button>
+        <button type="submit" className="btn primary sm">{editing === '__new' ? 'Add category' : 'Save'}</button>
+      </div>
+    </form>
+  );
+  return (
+    <Modal title="Categories" onClose={onClose} width={460}>
+      <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 12 }}>Rename, recolor, add or remove categories. Renaming updates every task that uses it.</div>
+      {editing === '__new' && editor}
+      {cats.map(c => {
+        const n = counts[c.name] || 0;
+        if (editing === c.name) return <div key={c.name}>{editor}</div>;
+        if (deleting === c.name) {
+          const opts = cats.filter(x => x.name !== c.name);
+          return (
+            <div key={c.name} style={{ border: '1px solid rgba(242,139,130,.5)', borderRadius: 12, padding: 12, marginBottom: 8 }}>
+              <div style={{ fontSize: 14, marginBottom: 8 }}>Delete <b>{c.name}</b>?{n + others[c.name] > 0 ? ` ${n} scheduled task${n === 1 ? '' : 's'}${others[c.name] ? ` and ${others[c.name]} pending/template item${others[c.name] === 1 ? '' : 's'}` : ''} will move to:` : ' Nothing uses it.'}</div>
+              {n + (others[c.name] || 0) > 0 && <select className="field" value={target || opts[0].name} onChange={e => setTarget(e.target.value)} style={{ marginBottom: 10 }}>{opts.map(o => <option key={o.name}>{o.name}</option>)}</select>}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn ghost sm" onClick={() => setDeleting(null)}>Keep</button>
+                <button className="btn danger sm" onClick={() => { onDelete(c.name, target || opts[0].name); setDeleting(null); setTarget(''); }}>Delete category</button>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid var(--line)' }}>
+            <span style={{ width: 14, height: 14, borderRadius: 4, background: c.color, flex: 'none' }} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14.5, overflowWrap: 'anywhere' }}>{c.name}</span>
+            <span className="mono" style={{ fontSize: 11.5, color: 'var(--faint)' }}>{n} task{n === 1 ? '' : 's'}</span>
+            <button className="icon-btn" style={{ width: 32, height: 32, fontSize: 14 }} aria-label={'Edit ' + c.name} onClick={() => beginEdit(c)}>✎</button>
+            <button className="icon-btn" style={{ width: 32, height: 32, fontSize: 14, opacity: cats.length > 1 ? 1 : .3 }} disabled={cats.length <= 1} aria-label={'Delete ' + c.name} title={cats.length <= 1 ? 'Keep at least one category' : 'Delete'} onClick={() => { setDeleting(c.name); setEditing(null); setTarget(''); }}>🗑</button>
+          </div>
+        );
+      })}
+      {editing !== '__new' && <button className="btn" style={{ marginTop: 14 }} onClick={beginNew}>＋ Add category</button>}
+    </Modal>
   );
 }
 
@@ -1595,6 +1688,10 @@ function App() {
   const bundleRef = useRef();
 
   const cfg = { hardStop: '18:00', workStart: '00:00', theme: 'dark', ...settings };
+  const catList = cfg.cats && cfg.cats.length ? cfg.cats : DEFAULT_CAT_LIST;
+  applyCats(catList);
+  const [collapsed, setCollapsed] = useState(() => { try { return JSON.parse(lsGet('tb.collapsed.v1') || '{}'); } catch (e) { return {}; } });
+  const toggleSec = k => setCollapsed(c => { const n = { ...c, [k]: !c[k] }; lsSet('tb.collapsed.v1', JSON.stringify(n)); return n; });
   useEffect(() => save(KEYS.days, days), [days]);
   useEffect(() => save(KEYS.tasks, tasks), [tasks]);
   useEffect(() => save(KEYS.settings, settings), [settings]);
@@ -1717,6 +1814,34 @@ function App() {
   const setHidden = arr => patchCfg({ hiddenCats: arr });
   const toggleCat = c => setHidden(hidden.includes(c) ? hidden.filter(x => x !== c) : [...hidden, c]);
   const showCat = c => { if (hidden.includes(c)) setHidden(hidden.filter(x => x !== c)); };
+  const catUse = useMemo(() => {
+    const counts = {}, others = {};
+    Object.values(days).forEach(l => l.forEach(b => { counts[b.cat] = (counts[b.cat] || 0) + 1; }));
+    const o = x => { others[x.cat] = (others[x.cat] || 0) + 1; };
+    inbox.forEach(o); tasks.forEach(o); tpls.forEach(t => t.blocks.forEach(o));
+    Object.keys(CATS).forEach(c => { others[c] = others[c] || 0; });
+    return { counts, others };
+  }, [days, inbox, tasks, tpls]);
+  const remapCat = (fn) => {
+    const d = {}; Object.keys(daysRef.current).forEach(k => { d[k] = daysRef.current[k].map(fn); });
+    daysRef.current = d; setDays(d);
+    const ib = inboxRef.current.map(fn); inboxRef.current = ib; setInbox(ib);
+    setTasks(ts => ts.map(fn)); setTpls(ts => ts.map(t => ({ ...t, blocks: t.blocks.map(fn) })));
+    hist.current = []; setCanUndo(false); // undo history would point at categories that no longer exist
+  };
+  const addCategory = (name, color) => { patchCfg({ cats: [...catList, { name, color }] }); flash(`Added category “${name}”`); };
+  const editCategory = (old, name, color) => {
+    const oldColor = CATS[old];
+    patchCfg({ cats: catList.map(c => (c.name === old ? { name, color } : c)), hiddenCats: hidden.map(h => (h === old ? name : h)) });
+    remapCat(o => (o.cat === old ? { ...o, cat: name, color: o.color === oldColor ? color : o.color } : o));
+    flash(`Updated “${name}”`);
+  };
+  const deleteCategory = (name, target) => {
+    const oldColor = CATS[name], tColor = CATS[target];
+    patchCfg({ cats: catList.filter(c => c.name !== name), hiddenCats: hidden.filter(h => h !== name) });
+    remapCat(o => (o.cat === name ? { ...o, cat: target, color: o.color === oldColor ? tColor : o.color } : o));
+    flash(`Deleted “${name}”`);
+  };
   const catCounts = useMemo(() => { const m = {}; (days[curKey] || []).forEach(b => { m[b.cat] = (m[b.cat] || 0) + 1; }); return m; }, [days, curKey]);
 
   const flash = (msg, undoFn) => {
@@ -1865,7 +1990,8 @@ function App() {
   };
   const addInbox = () => {
     const title = inForm.title.trim(); if (!title) return;
-    const it = { id: uid(), title, dur: clamp(parseInt(inForm.dur, 10) || 30, 1, 1440), cat: inForm.cat, pri: 'med', color: CATS[inForm.cat] };
+    const icat = CATS[inForm.cat] ? inForm.cat : firstCat();
+    const it = { id: uid(), title, dur: clamp(parseInt(inForm.dur, 10) || 30, 1, 1440), cat: icat, pri: 'med', color: CATS[icat] };
     setInbox(list => [...list, it]); setInForm({ ...inForm, title: '' });
   };
   const placeAt = (t, tgt, opts) => {
@@ -2051,7 +2177,7 @@ function App() {
   /* ── modal openers ── */
   const openAdd = (date = curKey, start) => {
     const s = start != null ? start : (date === todayKey ? Math.min(ceil15(nowMin), 1440 - 30) : 9 * 60);
-    setModal({ type: 'add', initial: { title: '', date, time: toHHMM(s), dur: 30, cat: 'Deep Work', pri: 'med', color: CATS['Deep Work'], status: 'confirmed', buf: 0, rec: 'none', notes: '', subs: [], essential: false } });
+    setModal({ type: 'add', initial: { title: '', date, time: toHHMM(s), dur: 30, cat: firstCat(), pri: 'med', color: CATS[firstCat()], status: 'confirmed', buf: 0, rec: 'none', notes: '', subs: [], essential: false } });
   };
   const openEdit = (date, id) => {
     const b = findBlock(date, id); if (!b) return;
@@ -2110,6 +2236,7 @@ function App() {
     ] : []),
     { icon: '📊', label: 'Insights', run: () => setModal({ type: 'insights' }) },
     { icon: '🗂', label: 'Day templates…', run: () => setModal({ type: 'tpls' }) },
+    { icon: '🏷', label: 'Manage categories…', run: () => setModal({ type: 'cats' }) },
     '-',
     { icon: '⬇', label: 'Export backup (.json)', run: exportJSON },
     { icon: '⬆', label: 'Import backup (.json)', run: () => jsonRef.current && jsonRef.current.click() },
@@ -2153,14 +2280,16 @@ function App() {
         <button className="btn" style={{ alignSelf: 'flex-start', padding: '10px 20px', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,.25)' }} onClick={() => openAdd()}>
           <span style={{ fontSize: 20, lineHeight: 1, color: 'var(--accent)' }}>+</span> Create
         </button>
-        <MiniCal cur={cur} onPick={d => { setCur(d); if (narrow) setSideOpen(false); }} days={days} hidden={hidden} view={view} todayKey={todayKey} />
+        <div>
+          <SecHeader title="Calendar" open={!collapsed.cal} onToggle={() => toggleSec('cal')} />
+          {!collapsed.cal && <MiniCal cur={cur} onPick={d => { setCur(d); if (narrow) setSideOpen(false); }} days={days} hidden={hidden} view={view} todayKey={todayKey} />}
+        </div>
 
         {/* inbox */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 6px 6px' }}>
-            <div style={secTitle}>Pending tasks</div>
-            <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{inbox.length ? (narrow ? 'hold & drag onto calendar' : 'drag onto calendar') : 'unscheduled'}</div>
-          </div>
+          <SecHeader title={`Pending tasks${inbox.length ? ' · ' + inbox.length : ''}`} open={!collapsed.inbox} onToggle={() => toggleSec('inbox')}
+            right={<div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{inbox.length ? (narrow ? 'hold & drag' : 'drag onto calendar') : 'unscheduled'}</div>} />
+          {!collapsed.inbox && <>
           {inbox.map(t => (
             <div key={t.id} className="stamp" onMouseDown={e => startInboxDrag(e, t, tgt => scheduleInbox(t, tgt))} onTouchStart={e => startTouchDrag(e, t, tgt => scheduleInbox(t, tgt))} onContextMenu={e => e.preventDefault()} style={{ cursor: 'grab', userSelect: 'none' }} title="Drag onto the calendar">
               <span style={{ width: 10, height: 10, borderRadius: 3, background: t.color, flex: 'none' }} />
@@ -2178,17 +2307,20 @@ function App() {
           </div>
           <div style={{ display: 'flex', gap: 6, padding: '6px 4px 0' }}>
             <input className="field mono" type="number" min="1" max="1440" title="Minutes" style={{ padding: '5px 8px', fontSize: 12, width: 64 }} value={inForm.dur} onChange={e => setInForm({ ...inForm, dur: e.target.value })} />
-            <select className="field" style={{ padding: '5px 6px', fontSize: 12 }} value={inForm.cat} onChange={e => setInForm({ ...inForm, cat: e.target.value })}>{Object.keys(CATS).map(c => <option key={c}>{c}</option>)}</select>
+            <select className="field" style={{ padding: '5px 6px', fontSize: 12 }} value={CATS[inForm.cat] ? inForm.cat : firstCat()} onChange={e => setInForm({ ...inForm, cat: e.target.value })}>{Object.keys(CATS).map(c => <option key={c}>{c}</option>)}</select>
             <button className="btn primary" style={{ padding: '4px 12px' }} onClick={addInbox}>Add</button>
           </div>
+          </>}
         </div>
 
         <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 6px 6px', gap: 8 }}>
-            <div style={secTitle}>Categories</div>
-            <button onClick={() => setHidden([])} style={{ background: 'none', border: 0, fontSize: 11, color: 'var(--accent)', padding: 0 }}>All</button>
-            <button onClick={() => setHidden(Object.keys(CATS))} style={{ background: 'none', border: 0, fontSize: 11, color: 'var(--accent)', padding: 0 }}>None</button>
-          </div>
+          <SecHeader title="Categories" open={!collapsed.cats} onToggle={() => toggleSec('cats')}
+            right={<div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+              <button onClick={() => setHidden([])} style={{ background: 'none', border: 0, fontSize: 11, color: 'var(--accent)', padding: 0 }}>All</button>
+              <button onClick={() => setHidden(Object.keys(CATS))} style={{ background: 'none', border: 0, fontSize: 11, color: 'var(--accent)', padding: 0 }}>None</button>
+              <button onClick={() => setModal({ type: 'cats' })} style={{ background: 'none', border: 0, fontSize: 11, color: 'var(--accent)', padding: 0 }}>✎ Edit</button>
+            </div>} />
+          {!collapsed.cats && <>
           {Object.entries(CATS).map(([c, col]) => {
             const on = !hidden.includes(c);
             return (
@@ -2199,12 +2331,13 @@ function App() {
               </button>
             );
           })}
+          <button onClick={() => setModal({ type: 'cats', startNew: true })} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, color: 'var(--accent)', fontSize: 13, padding: '7px 9px' }}>＋ New category</button>
+          </>}
         </div>
         <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 6px 6px' }}>
-            <div style={secTitle}>Quick Stamp</div>
-            <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{narrow ? 'tap · or hold & drag' : 'click or drag · by use'}</div>
-          </div>
+          <SecHeader title="Quick Stamp" open={!collapsed.stamp} onToggle={() => toggleSec('stamp')}
+            right={<div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{narrow ? 'tap · or hold & drag' : 'click or drag · by use'}</div>} />
+          {!collapsed.stamp && <>
           {sortedTasks.map(t => (
             <button key={t.id} className="stamp" onClick={() => stamp(t)} onMouseDown={e => startInboxDrag(e, { title: t.name, dur: t.dur, color: t.color }, tgt => stampAt(t, tgt))} onTouchStart={e => startTouchDrag(e, { title: t.name, dur: t.dur, color: t.color }, tgt => stampAt(t, tgt))} onContextMenu={e => e.preventDefault()} style={{ cursor: 'grab', userSelect: 'none' }} title="Click to append to the selected day · drag onto the calendar">
               <span style={{ width: 10, height: 10, borderRadius: 3, background: t.color, flex: 'none' }} />
@@ -2217,6 +2350,7 @@ function App() {
             </button>
           ))}
           {!sortedTasks.length && <div style={{ padding: '4px 8px', fontSize: 12, color: 'var(--faint)' }}>No templates. Tick “save as Quick Stamp” when adding a block.</div>}
+          </>}
         </div>
         <div style={{ marginTop: 'auto', padding: '10px 8px 0', borderTop: '1px solid var(--line)' }}>
           <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--faint)', marginBottom: 6 }}>Energy rhythm</div>
@@ -2338,6 +2472,7 @@ function App() {
       )}
       {modal && modal.type === 'buf' && (() => { const b = findBlock(modal.date, modal.id); return b ? <BufferModal block={b} onApply={v => setBuf(modal.date, modal.id, v)} onClose={() => setModal(null)} /> : null; })()}
       {modal && modal.type === 'finish' && (() => { const b = findBlock(modal.date, modal.id); return b ? <FinishModal block={b} nowMin={nowMin} isToday={modal.date === todayKey} onApply={(fm, pull) => applyFinish(modal.date, modal.id, fm, pull)} onClose={() => setModal(null)} /> : null; })()}
+      {modal && modal.type === 'cats' && <CategoriesModal cats={catList} counts={catUse.counts} others={catUse.others} startNew={!!modal.startNew} onAdd={addCategory} onEdit={editCategory} onDelete={deleteCategory} onClose={() => setModal(null)} />}
       {modal && modal.type === 'skip' && (() => { const b = findBlock(modal.date, modal.id); return b ? <SkipModal block={b} onApply={r => applySkip(modal.date, modal.id, r)} onClose={() => setModal(null)} /> : null; })()}
       {modal && modal.type === 'late' && <LateModal affected={lateAffected} nowMin={nowMin} onApply={applyLate} onClose={() => setModal(null)} />}
       {modal && modal.type === 'reopt' && <ReoptModal plan={reoptPlan} hardStop={hardStop} dateLabel={curKey === todayKey ? 'Today' : cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} onApply={applyReopt} onClose={() => setModal(null)} />}
