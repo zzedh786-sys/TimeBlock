@@ -810,25 +810,74 @@ function SummaryBar({ st, hardStop, compact }) {
   );
 }
 
+/* ───────────── sign-in options (welcome screen + sign-in dialog) ───────────── */
+function authErrMsg(code) {
+  return ({
+    'auth/invalid-credential': 'Wrong email or password.', 'auth/wrong-password': 'Wrong email or password.', 'auth/user-not-found': 'No account found with that email.',
+    'auth/invalid-email': 'That email address doesn’t look right.', 'auth/email-already-in-use': 'An account with this email already exists — try signing in.',
+    'auth/weak-password': 'Password must be at least 6 characters.', 'auth/missing-password': 'Enter a password.', 'auth/too-many-requests': 'Too many attempts — wait a moment and try again.',
+    'auth/network-request-failed': 'Network problem — check your connection.', 'auth/operation-not-allowed': 'That sign-in method isn’t enabled in Firebase yet.',
+    'auth/user-disabled': 'This account has been disabled.',
+  })[code] || ('Something went wrong (' + (code || 'unknown') + ').');
+}
+function SignInOptions({ onProvider, onEmail, onReset }) {
+  const [mode, setMode] = useState(null);
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [msg, setMsg] = useState({ t: '', ok: false });
+  const [busy, setBusy] = useState(false);
+  const big = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, width: '100%', borderRadius: 999, padding: '12px 20px', fontSize: 15, fontWeight: 500, marginBottom: 10 };
+  const submit = async e => {
+    e.preventDefault(); setMsg({ t: '', ok: false }); setBusy(true);
+    const m = await onEmail(mode, email.trim(), pw); setBusy(false);
+    if (m) setMsg({ t: m, ok: false });
+  };
+  const forgot = async () => { const m = await onReset(email.trim()); setMsg(m === 'ok' ? { t: 'Password reset email sent — check your inbox.', ok: true } : { t: m, ok: false }); };
+  return (
+    <div style={{ width: 320, maxWidth: '100%', margin: '0 auto' }}>
+      <button onClick={() => onProvider('google')} style={{ ...big, background: '#fff', color: '#1f1f1f', border: '1px solid #dadce0', boxShadow: '0 2px 10px rgba(0,0,0,.2)' }}>
+        <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Continue with Google
+      </button>
+      <button onClick={() => onProvider('apple')} style={{ ...big, background: '#000', color: '#fff', border: '1px solid #555' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" aria-hidden="true"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/></svg>
+        Continue with Apple
+      </button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--faint)', fontSize: 12, margin: '4px 0 12px' }}><span style={{ flex: 1, height: 1, background: 'var(--line-strong)' }} />or<span style={{ flex: 1, height: 1, background: 'var(--line-strong)' }} /></div>
+      {!mode ? (
+        <button className="btn" style={{ ...big, marginBottom: 0 }} onClick={() => setMode('signin')}>✉ Continue with email</button>
+      ) : (
+        <form onSubmit={submit} style={{ textAlign: 'left' }}>
+          <input className="field" type="email" autoComplete="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} style={{ marginBottom: 8 }} required />
+          <input className="field" type="password" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'Create a password (6+ characters)' : 'Password'} value={pw} onChange={e => setPw(e.target.value)} style={{ marginBottom: 10 }} required />
+          {msg.t && <div style={{ fontSize: 13, color: msg.ok ? '#81c995' : 'var(--danger)', marginBottom: 10 }}>{msg.t}</div>}
+          <button type="submit" className="btn primary" disabled={busy} style={{ ...big, marginBottom: 10, opacity: busy ? .6 : 1 }}>{busy ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}</button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+            <button type="button" onClick={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setMsg({ t: '', ok: false }); }} style={{ background: 'none', border: 0, color: 'var(--accent)', padding: 4 }}>{mode === 'signup' ? 'I already have an account' : 'Create an account'}</button>
+            {mode === 'signin' && <button type="button" onClick={forgot} style={{ background: 'none', border: 0, color: 'var(--muted)', padding: 4 }}>Forgot password?</button>}
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
 /* ───────────── first-run welcome ───────────── */
-function WelcomeScreen({ onSignIn, onSkip }) {
+function WelcomeScreen({ onProvider, onEmail, onReset, onSkip }) {
   const perk = (icon, t) => <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 14, color: 'var(--muted)' }}><span style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--surface3)', display: 'grid', placeItems: 'center', fontSize: 15 }}>{icon}</span>{t}</div>;
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'var(--bg)', display: 'grid', placeItems: 'center', padding: 20, overflow: 'auto' }}>
-      <div style={{ width: 420, maxWidth: '100%', textAlign: 'center', animation: 'pop .25s ease-out' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'var(--bg)', overflow: 'auto', display: 'flex', padding: 20 }}>
+      <div style={{ width: 420, maxWidth: '100%', textAlign: 'center', margin: 'auto', animation: 'pop .25s ease-out' }}>
         <div style={{ width: 64, height: 64, margin: '0 auto 18px', borderRadius: 18, background: 'linear-gradient(135deg,#8ab4f8,#c58af9)', display: 'grid', placeItems: 'center', color: '#0c1c3a', fontWeight: 700, fontSize: 30 }}>▤</div>
         <div style={{ fontSize: 30, fontWeight: 500, letterSpacing: '-.02em', marginBottom: 6 }}>Welcome to Timeblock</div>
-        <div style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 26 }}>Plan your day in focused blocks. Sign in once and your calendar follows you everywhere.</div>
-        <div style={{ display: 'grid', gap: 12, textAlign: 'left', margin: '0 auto 28px', width: 'fit-content' }}>
+        <div style={{ fontSize: 15, color: 'var(--muted)', marginBottom: 22 }}>Plan your day in focused blocks. Sign in once and your calendar follows you everywhere.</div>
+        <div style={{ display: 'grid', gap: 12, textAlign: 'left', margin: '0 auto 24px', width: 'fit-content' }}>
           {perk('🔄', 'Syncs between your phone and laptop')}
           {perk('☁', 'Backed up to your account automatically')}
           {perk('🔒', 'Private — only you can see your data')}
         </div>
-        <button onClick={onSignIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 12, background: '#fff', color: '#1f1f1f', border: '1px solid #dadce0', borderRadius: 999, padding: '12px 26px', fontSize: 15, fontWeight: 500, boxShadow: '0 2px 10px rgba(0,0,0,.25)' }}>
-          <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-          Continue with Google
-        </button>
-        <div><button onClick={onSkip} style={{ background: 'none', border: 0, color: 'var(--muted)', fontSize: 13, marginTop: 18, textDecoration: 'underline', padding: 6 }}>Skip for now — use on this device only</button></div>
+        <SignInOptions onProvider={onProvider} onEmail={onEmail} onReset={onReset} />
+        <div><button onClick={onSkip} style={{ background: 'none', border: 0, color: 'var(--muted)', fontSize: 13, marginTop: 16, textDecoration: 'underline', padding: 6 }}>Skip for now — use on this device only</button></div>
         <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 6 }}>You can sign in later from the ☁ button at the top.</div>
       </div>
     </div>
@@ -854,7 +903,7 @@ function AccountModal({ user, status, onSyncNow, onSignOut, onClose }) {
     <Modal title="Account & sync" onClose={onClose} width={400}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
         {user.photo ? <img src={user.photo} alt="" referrerPolicy="no-referrer" style={{ width: 40, height: 40, borderRadius: '50%' }} /> : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--accent)', color: 'var(--accent-ink)', display: 'grid', placeItems: 'center', fontWeight: 700 }}>{(user.name || user.email || '?')[0].toUpperCase()}</div>}
-        <div style={{ minWidth: 0 }}><div style={{ fontWeight: 500 }}>{user.name || 'Signed in'}</div><div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div></div>
+        <div style={{ minWidth: 0 }}><div style={{ fontWeight: 500 }}>{user.name || 'Signed in'}</div><div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email || 'Signed in with Apple'}</div></div>
       </div>
       <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: '10px 14px', marginBottom: 14, fontSize: 13 }}>
         <div>Status: <b>{SYNC_LABEL[status] || status}</b></div>
@@ -1222,17 +1271,30 @@ function App() {
       finishSync(user.uid);
     } catch (e) { setSync('error'); }
   };
-  const signIn = async () => {
+  const signInProvider = async kind => {
     if (!fb) { flash('Cloud sync is unavailable (Firebase could not load).'); return; }
-    const prov = new firebase.auth.GoogleAuthProvider();
+    let prov;
+    if (kind === 'apple') { prov = new firebase.auth.OAuthProvider('apple.com'); prov.addScope('email'); prov.addScope('name'); }
+    else prov = new firebase.auth.GoogleAuthProvider();
     try { await fb.auth.signInWithPopup(prov); }
     catch (e) {
       if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') fb.auth.signInWithRedirect(prov);
       else if (e.code === 'auth/unauthorized-domain') flash('This site is not an authorized domain in Firebase → Authentication → Settings.');
       else if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') flash('Sign-in cancelled');
-      else flash('Sign-in failed: ' + (e.code || e.message));
+      else if (e.code === 'auth/account-exists-with-different-credential') flash('That email already uses a different sign-in method — use the one you signed up with.');
+      else flash(authErrMsg(e.code));
     }
   };
+  const emailAuth = async (mode, email, pw) => {
+    if (!fb) return 'Cloud sync is unavailable (Firebase could not load).';
+    try { if (mode === 'signup') await fb.auth.createUserWithEmailAndPassword(email, pw); else await fb.auth.signInWithEmailAndPassword(email, pw); return ''; }
+    catch (e) { return authErrMsg(e.code); }
+  };
+  const resetPw = async email => {
+    if (!email) return 'Enter your email above first.';
+    try { await fb.auth.sendPasswordResetEmail(email); return 'ok'; } catch (e) { return authErrMsg(e.code); }
+  };
+  const signIn = () => setModal({ type: 'signin' });
   const signOut = () => { setModal(null); if (fb) fb.auth.signOut(); flash('Signed out — your data stays on this device'); };
   const syncNow = async () => {
     if (!user || !readyRef.current) { flash('Still connecting…'); return; }
@@ -1240,7 +1302,7 @@ function App() {
     try { await pushNow(user.uid); setSync('synced'); flash('Synced'); } catch (e) { setSync(e.message === 'too-large' ? 'toolarge' : 'error'); }
   };
   useEffect(() => { if (!fb) return; return fb.auth.onAuthStateChanged(u => { setUser(u ? { uid: u.uid, name: u.displayName, email: u.email, photo: u.photoURL } : null); setAuthReady(true); }); }, []);
-  useEffect(() => { if (user && !welcomed) { lsSet('tb.welcomed.v1', '1'); setWelcomed(true); } }, [user]);
+  useEffect(() => { if (user && !welcomed) { lsSet('tb.welcomed.v1', '1'); setWelcomed(true); } if (user) setModal(m => (m && m.type === 'signin' ? null : m)); }, [user]);
   const skipWelcome = () => { lsSet('tb.welcomed.v1', '1'); setWelcomed(true); };
   useEffect(() => {
     if (!fb || !user) { readyRef.current = false; setSync(fb ? 'off' : 'unavailable'); return; }
@@ -1747,7 +1809,7 @@ function App() {
           );
           const lateEl = <button className={cls} onClick={() => setModal({ type: 'late' })}>⏰ Running late</button>;
           const reoptEl = <button className={cls} onClick={() => { if (view === 'month') setView('day'); setModal({ type: 'reopt' }); }}>✦ Re-optimize</button>;
-          const syncEl = fb && <button className={cls} onClick={user ? () => setModal({ type: 'account' }) : signIn} title={user ? user.email : 'Sign in with Google to save your data in the cloud'} style={sync === 'error' || sync === 'toolarge' ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : {}}>☁ {user ? (SYNC_LABEL[sync] || '').replace(' — will sync later', '') : 'Sign in to sync'}</button>;
+          const syncEl = fb && <button className={cls} onClick={user ? () => setModal({ type: 'account' }) : signIn} title={user ? (user.email || 'Signed in') : 'Sign in to save your data in the cloud'} style={sync === 'error' || sync === 'toolarge' ? { borderColor: 'var(--danger)', color: 'var(--danger)' } : {}}>☁ {user ? (SYNC_LABEL[sync] || '').replace(' — will sync later', '') : 'Sign in to sync'}</button>;
           const undoEl = (
             <button className={cls} title="Undo last change (⌘/Ctrl+Z)" aria-label="Undo" onClick={undo} disabled={!canUndo}
               style={canUndo ? { color: 'var(--accent)', borderColor: 'var(--accent)', background: 'rgba(138,180,248,.10)' } : { opacity: .45, cursor: 'default' }}>
@@ -1841,9 +1903,10 @@ function App() {
       {modal && modal.type === 'tpls' && <TemplatesModal tpls={tpls} dateLabel={curKey === todayKey ? 'today' : cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} dayCount={(days[curKey] || []).length} onSave={saveTpl} onApply={applyTpl} onDelete={id => setTpls(t => t.filter(x => x.id !== id))} onClose={() => setModal(null)} />}
       {modal && modal.type === 'settings' && <SettingsModal cfg={cfg} onChange={patchCfg} onClose={() => setModal(null)} />}
       {modal && modal.type === 'help' && <ShortcutsModal onClose={() => setModal(null)} />}
+      {modal && modal.type === 'signin' && !user && <Modal title="Sign in to sync" onClose={() => setModal(null)} width={400}><div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', marginBottom: 16 }}>Save your calendar to your account and use it on every device.</div><SignInOptions onProvider={signInProvider} onEmail={emailAuth} onReset={resetPw} /></Modal>}
       {modal && modal.type === 'account' && user && <AccountModal user={user} status={sync} onSyncNow={syncNow} onSignOut={signOut} onClose={() => setModal(null)} />}
       {syncChoice && <SyncChoiceModal onChoose={resolveChoice} />}
-      {fb && authReady && !user && !welcomed && <WelcomeScreen onSignIn={signIn} onSkip={skipWelcome} />}
+      {fb && authReady && !user && !welcomed && <WelcomeScreen onProvider={signInProvider} onEmail={emailAuth} onReset={resetPw} onSkip={skipWelcome} />}
 
       {focusBlock && <FocusBar block={focusBlock} dateKey={settings.focus.date} left={narrow ? 12 : 280}
         onFinish={() => setModal({ type: 'finish', date: settings.focus.date, id: settings.focus.id })}
