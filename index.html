@@ -1529,7 +1529,7 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
                 {workStart > 0 && <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: workStart * PX_MIN, background: 'var(--shade)', pointerEvents: 'none', zIndex: 2 }} />}
                 {/* hard stop shading */}
                 <div style={{ position: 'absolute', left: 0, right: 0, top: hardStop * PX_MIN, bottom: 0, background: 'var(--shade)', borderTop: '1px dashed var(--warn)', pointerEvents: 'none', zIndex: 2 }}>
-                  <span className="mono" style={{ position: 'absolute', right: 6, top: 3, fontSize: 9.5, color: 'var(--warn)', opacity: .85 }}>HARD STOP {fmtT(hardStop)}</span>
+                  {!narrow && <span className="mono" style={{ position: 'absolute', right: 6, top: 3, fontSize: 9.5, color: 'var(--warn)', opacity: .85 }}>HARD STOP {fmtT(hardStop)}</span>}
                 </div>
 
                 {bufs.map(s => (
@@ -1541,8 +1541,12 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
 
                 {blocks.map(b => {
                   const ln = lanes.get(b.id) || { lane: 0, n: 1 };
-                  const h = Math.max(b.dur * PX_MIN, 16);
+                  const h = Math.max(b.dur * PX_MIN, narrow ? 24 : 16);
+                  const small = h < 44;
                   const tent = b.status === 'tentative';
+                  const hitH = narrow ? (small ? h - 2 : Math.min(44, Math.max(26, h - 26))) : 24;
+                  const cs = narrow ? clamp(hitH - 8, 11, 20) : 15;
+                  const twoLine = h >= 56;
                   const past = isT && bEnd(b) < nowMin;
                   return (
                     <div key={b.id} className="blk"
@@ -1553,14 +1557,14 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
                       style={{
                         position: 'absolute', top: b.start * PX_MIN + 1, height: h - 2,
                         left: `calc(${ln.lane / ln.n * 100}% + 3px)`, width: `calc(${100 / ln.n}% - 6px)`,
-                        background: tent ? b.color + '14' : b.color + '42',
+                        background: tent ? `linear-gradient(${b.color}14, ${b.color}14), var(--bg)` : `linear-gradient(${b.color}42, ${b.color}42), var(--bg)`,
                         border: tent ? `1.5px dashed ${b.color}` : `1px solid ${b.color}80`,
                         borderLeft: tent ? `1.5px dashed ${b.color}` : `4px solid ${b.color}`,
-                        borderRadius: 8, padding: h < 40 ? '1px 8px' : '5px 8px', overflow: 'hidden', cursor: 'grab', zIndex: 5, WebkitTouchCallout: 'none',
+                        borderRadius: 8, padding: small ? `0 ${narrow ? 36 : 26}px 0 8px` : '5px 8px', overflow: 'hidden', cursor: 'grab', zIndex: 5, WebkitTouchCallout: 'none',
                         opacity: dragId === b.id ? .3 : (b.done || b.skipped || past) ? .6 : 1,
-                        display: 'flex', flexDirection: h < 44 ? 'row' : 'column', alignItems: h < 44 ? 'center' : 'stretch', gap: h < 44 ? 8 : 0,
+                        display: 'flex', flexDirection: small ? 'row' : 'column', alignItems: small ? 'center' : 'stretch', gap: small ? 6 : 0,
                       }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, paddingRight: narrow ? 30 : 20 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, paddingRight: small ? 0 : (narrow ? 34 : 20), flex: small ? '1 1 0' : 'none', ...(twoLine ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', whiteSpace: 'normal', overflowWrap: 'anywhere' } : { whiteSpace: 'nowrap' }) }}>
                         {tent && <span style={{ color: b.color }}>? </span>}
                         {b.essential && <span title="Essential" style={{ color: '#fdd663' }}>★ </span>}
                         {b.seriesId && <span title="Repeats" style={{ color: b.color }}>↻ </span>}
@@ -1575,15 +1579,17 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
                         onMouseDown={e => e.stopPropagation()} onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onToggleDone(k, b.id); }}
                         onTouchStart={e => { e.stopPropagation(); touchAt.current = Date.now(); const p = e.touches[0]; tapRef.current = { x: p.clientX, y: p.clientY }; }}
                         onTouchEnd={e => { e.stopPropagation(); const t0 = tapRef.current, p = e.changedTouches[0]; if (t0 && Math.abs(p.clientX - t0.x) + Math.abs(p.clientY - t0.y) < 12) { e.preventDefault(); onToggleDone(k, b.id); } }}
-                        style={{ position: 'absolute', top: 0, right: 0, width: narrow ? Math.min(44, Math.max(26, h - 26)) : 24, height: narrow ? Math.min(44, Math.max(26, h - 26)) : 24, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 2 }}>
-                        <div style={{ width: narrow ? 20 : 15, height: narrow ? 20 : 15, borderRadius: '50%', border: `1.5px solid ${b.color}`, background: b.done ? b.color : 'transparent', color: b.skipped ? b.color : '#101114', fontSize: narrow ? 12 : 10, fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{b.done ? '✓' : b.skipped ? '–' : ''}</div>
+                        style={{ position: 'absolute', top: 0, right: 0, width: narrow ? 34 : 24, height: hitH, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 2 }}>
+                        <div style={{ width: cs, height: cs, borderRadius: '50%', border: `1.5px solid ${b.color}`, background: b.done ? b.color : 'transparent', color: b.skipped ? b.color : '#101114', fontSize: Math.round(cs * .6), fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{b.done ? '✓' : b.skipped ? '–' : ''}</div>
                       </div>
-                      <div className="mono" style={{ fontSize: 10.5, color: b.color, whiteSpace: 'nowrap', flex: 'none', opacity: .95 }}>
-                        {fmtRange(b.start, bEnd(b))}{h >= 60 && !isWeek ? ` · ${b.cat}` : ''}
-                      </div>
-                      {h >= 70 && !isWeek && <div className="mono" style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{PRI[b.pri].mark} {PRI[b.pri].label.toLowerCase()}</div>}
-                      <div data-resize="1" onMouseDown={e => startResize(e, b, k)} onTouchStart={e => startTouchResize(e, b, k)} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: narrow ? 22 : 9, cursor: 'ns-resize', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', touchAction: 'none' }}>
-                        <div style={{ width: narrow ? 34 : 22, height: narrow ? 4 : 3, borderRadius: 2, background: b.color, opacity: narrow ? .8 : .55, marginBottom: narrow ? 4 : 1, pointerEvents: 'none' }} />
+                      {!(narrow && small && ln.n > 1) && (
+                        <div className="mono" style={{ fontSize: 10.5, color: b.color, whiteSpace: 'nowrap', flex: 'none', opacity: .95, ...(twoLine ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }) }}>
+                          {narrow && small ? fmtT(b.start) : fmtRange(b.start, bEnd(b))}{h >= 60 && !isWeek && !narrow ? ` · ${b.cat}` : ''}
+                        </div>
+                      )}
+                      {h >= 70 && !isWeek && <div className="mono" style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{PRI[b.pri].mark} {PRI[b.pri].label.toLowerCase()}{narrow ? ` · ${b.cat}` : ''}</div>}
+                      <div data-resize="1" onMouseDown={e => startResize(e, b, k)} onTouchStart={e => startTouchResize(e, b, k)} style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: narrow ? (small ? 9 : 22) : 9, cursor: 'ns-resize', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', touchAction: 'none' }}>
+                        <div style={{ display: h < 34 ? 'none' : 'block', width: narrow ? (small ? 22 : 34) : 22, height: narrow ? (small ? 3 : 4) : 3, borderRadius: 2, background: b.color, opacity: narrow ? .8 : .55, marginBottom: narrow ? (small ? 1 : 4) : 1, pointerEvents: 'none' }} />
                       </div>
                     </div>
                   );
