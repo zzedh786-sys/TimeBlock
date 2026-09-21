@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Timeblock</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -70,7 +70,8 @@
     .modal-bg { place-items: end center !important; padding: 0 !important; }
     .modal-panel { width: 100% !important; max-width: 100% !important; max-height: 94dvh !important; border-radius: 18px 18px 0 0 !important; overflow-x: hidden !important; padding-bottom: env(safe-area-inset-bottom); }
     .modal-body { padding: 6px 16px 22px !important; }
-    .field { font-size: 16px; }
+    /* iOS Safari zooms the page when a focused input has text smaller than 16px — keep every input at 16px on phones */
+    input, select, textarea { font-size: 16px !important; }
     .icon-btn { width: 36px; height: 36px; }
     .stamp { padding-top: 9px; padding-bottom: 9px; }
     .menu-item { padding: 11px 14px; }
