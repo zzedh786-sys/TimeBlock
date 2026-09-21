@@ -55,7 +55,13 @@
   .btn.sm { padding: 6px 12px; font-size: 12.5px; flex: none; }
   .hscroll { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .hscroll::-webkit-scrollbar { display: none; }
+  input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; min-height: 40px; text-align: left; }
+  .modal-panel input, .modal-panel select, .modal-panel textarea { min-width: 0; max-width: 100%; }
+  .stamp { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
   @media (max-width: 860px) {
+    .modal-bg { place-items: end center !important; padding: 0 !important; }
+    .modal-panel { width: 100% !important; max-width: 100% !important; max-height: 94dvh !important; border-radius: 18px 18px 0 0 !important; overflow-x: hidden !important; padding-bottom: env(safe-area-inset-bottom); }
+    .modal-body { padding: 6px 16px 22px !important; }
     .field { font-size: 16px; }
     .icon-btn { width: 36px; height: 36px; }
     .stamp { padding-top: 9px; padding-bottom: 9px; }
@@ -369,14 +375,14 @@ function Modal({ title, onClose, children, width = 440 }) {
     return () => window.removeEventListener('keydown', h);
   }, [onClose]);
   return (
-    <div onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    <div className="modal-bg" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'center', zIndex: 100, padding: 16 }}>
-      <div style={{ width, maxWidth: '100%', maxHeight: '92vh', overflow: 'auto', background: 'var(--surface)', border: '1px solid var(--line-strong)', borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,.6)', animation: 'pop .14s ease-out' }}>
+      <div className="modal-panel" style={{ width, maxWidth: '100%', maxHeight: '92vh', overflow: 'auto', background: 'var(--surface)', border: '1px solid var(--line-strong)', borderRadius: 16, boxShadow: '0 24px 60px rgba(0,0,0,.6)', animation: 'pop .14s ease-out' }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px 6px' }}>
           <div style={{ fontSize: 18, fontWeight: 500, flex: 1 }}>{title}</div>
           <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
         </div>
-        <div style={{ padding: '8px 20px 20px' }}>{children}</div>
+        <div className="modal-body" style={{ padding: '8px 20px 20px' }}>{children}</div>
       </div>
     </div>
   );
@@ -405,19 +411,19 @@ function BlockModal({ mode, initial, onSave, onDelete, onClose }) {
           <label className="lbl">Task name</label>
           <input className="field" autoFocus value={f.title} onChange={e => set('title', e.target.value)} placeholder="What are you working on?" />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 10, marginBottom: 14 }}>
           <div><label className="lbl">Date</label><input type="date" className="field" value={f.date} onChange={e => e.target.value && set('date', e.target.value)} /></div>
           <div><label className="lbl">Start</label><input type="time" className="field" value={f.time} onChange={e => set('time', e.target.value)} /></div>
         </div>
         <label className="lbl">Duration (any length up to 24h)</label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <input type="number" min="0" max="24" className="field mono" style={{ width: 80 }} value={Math.floor((Number(f.dur) || 0) / 60)}
             onChange={e => set('dur', clamp((parseInt(e.target.value, 10) || 0) * 60 + (Number(f.dur) || 0) % 60, 1, 1440))} />
           <span style={{ color: 'var(--muted)', fontSize: 13 }}>h</span>
           <input type="number" min="0" max="59" className="field mono" style={{ width: 80 }} value={(Number(f.dur) || 0) % 60}
             onChange={e => set('dur', clamp(Math.floor((Number(f.dur) || 0) / 60) * 60 + clamp(parseInt(e.target.value, 10) || 0, 0, 59), 1, 1440))} />
           <span style={{ color: 'var(--muted)', fontSize: 13 }}>min</span>
-          <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--faint)' }}>{Number(f.dur) || 0} min total</span>
+          <span className="mono" style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--faint)', whiteSpace: 'nowrap' }}>{Number(f.dur) || 0} min total</span>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
           {[15, 30, 45, 60, 90, 120, 240, 480].map(m => <button type="button" key={m} className={'chip' + (Number(f.dur) === m ? ' on' : '')} onClick={() => set('dur', m)}>{m >= 60 && m % 60 === 0 ? m / 60 + 'h' : m + 'm'}</button>)}
@@ -431,7 +437,7 @@ function BlockModal({ mode, initial, onSave, onDelete, onClose }) {
             <span style={{ color: 'var(--muted)', fontSize: 12 }}>min</span>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10, marginBottom: 14 }}>
           <div>
             <label className="lbl">Category</label>
             <select className="field" value={f.cat} onChange={e => { set('cat', e.target.value); if (!colorTouched) set('color', CATS[e.target.value]); }}>
@@ -774,7 +780,7 @@ function SettingsModal({ cfg, onChange, onClose }) {
       <div className="pills" style={{ marginBottom: 14 }}>
         {['dark', 'light'].map(t => <button key={t} className={'pill' + (cfg.theme === t ? ' on' : '')} onClick={() => onChange({ theme: t })}>{t[0].toUpperCase() + t.slice(1)}</button>)}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 10, marginBottom: 6 }}>
         <div><label className="lbl">Work day starts</label><input type="time" className="field" value={cfg.workStart} onChange={e => e.target.value && onChange({ workStart: e.target.value })} /></div>
         <div><label className="lbl">Hard stop</label><input type="time" className="field" value={cfg.hardStop} onChange={e => e.target.value && onChange({ hardStop: e.target.value })} /></div>
       </div>
@@ -1034,7 +1040,7 @@ function TimeGrid({ narrow, dates, days, now, hardStop, workStart, hidden, onTog
   const minW = isWeek ? G + 7 * (narrow ? 104 : 128) : 0;
 
   return (
-    <div ref={scroller} style={{ flex: 1, overflow: 'auto', position: 'relative', userSelect: 'none' }}>
+    <div ref={scroller} data-scroller="1" style={{ flex: 1, overflow: 'auto', position: 'relative', userSelect: 'none' }}>
       <div style={{ minWidth: minW }}>
         {/* sticky day headers */}
         <div style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', background: 'var(--bg)', borderBottom: '1px solid var(--line-strong)' }}>
@@ -1222,6 +1228,8 @@ function App() {
   const [authReady, setAuthReady] = useState(false);
   const [welcomed, setWelcomed] = useState(() => lsGet('tb.welcomed.v1') === '1');
   const [canUndo, setCanUndo] = useState(false);
+  const touchDragging = useRef(false);
+  const swipe = useRef(null);
   const [sync, setSync] = useState(fb ? 'off' : 'unavailable');
   const [syncChoice, setSyncChoice] = useState(null);
   const revRef = useRef(parseInt(lsGet('tb.rev.v1') || '0', 10) || 0);
@@ -1519,26 +1527,25 @@ function App() {
     commit(d, { inbox: [...inboxRef.current, { id: uid(), title: b.title, dur: b.dur, cat: b.cat, pri: b.pri, color: b.color }] });
     flash(`Moved “${b.title}” to Pending tasks`, undo);
   };
+  const findDropTarget = (cx, cy, dur) => {
+    for (const c of document.querySelectorAll('[data-col]')) {
+      const r = c.getBoundingClientRect();
+      if (cx >= r.left && cx < r.right && cy >= r.top && cy <= r.bottom) return { date: c.dataset.col, start: clamp(Math.round((cy - r.top) / PX_MIN / SLOT) * SLOT, 0, 1440 - dur) };
+    }
+    for (const c of document.querySelectorAll('[data-day]')) {
+      const r = c.getBoundingClientRect();
+      if (cx >= r.left && cx < r.right && cy >= r.top && cy <= r.bottom) return { date: c.dataset.day, start: null };
+    }
+    return null;
+  };
   const startInboxDrag = (e, t, onDrop) => {
     if (e.button !== 0) return;
     e.preventDefault();
     const sx = e.clientX, sy = e.clientY;
     let active = false, tgt = null;
-    const find = ev => {
-      for (const c of document.querySelectorAll('[data-col]')) {
-        const r = c.getBoundingClientRect();
-        if (ev.clientX >= r.left && ev.clientX < r.right && ev.clientY >= r.top && ev.clientY <= r.bottom)
-          return { date: c.dataset.col, start: clamp(Math.round((ev.clientY - r.top) / PX_MIN / SLOT) * SLOT, 0, 1440 - t.dur) };
-      }
-      for (const c of document.querySelectorAll('[data-day]')) {
-        const r = c.getBoundingClientRect();
-        if (ev.clientX >= r.left && ev.clientX < r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) return { date: c.dataset.day, start: null };
-      }
-      return null;
-    };
     const move = ev => {
       if (!active) { if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) < 5) return; active = true; setSideOpen(false); }
-      tgt = find(ev);
+      tgt = findDropTarget(ev.clientX, ev.clientY, t.dur);
       setInboxDrag({ t, x: ev.clientX, y: ev.clientY, tgt });
     };
     const up = () => {
@@ -1547,6 +1554,42 @@ function App() {
       if (active && tgt) onDrop(tgt);
     };
     window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
+  };
+  // Touch: press and hold ~⅓ s to pick an item up, then drag it onto the calendar. Moving before that just scrolls the list.
+  const startTouchDrag = (e, t, onDrop) => {
+    if (e.touches.length !== 1) return;
+    const el = e.currentTarget, p0 = e.touches[0];
+    let x = p0.clientX, y = p0.clientY;
+    const sx = x, sy = y;
+    let active = false, tgt = null, timer = null, loop = null;
+    const show = () => { tgt = findDropTarget(x, y, t.dur); setInboxDrag({ t, x, y, tgt, touch: true }); };
+    const cleanup = () => {
+      clearTimeout(timer); clearInterval(loop);
+      el.removeEventListener('touchmove', move); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', cancel);
+    };
+    function move(ev) {
+      const p = ev.touches[0]; x = p.clientX; y = p.clientY;
+      if (!active) { if (Math.abs(x - sx) + Math.abs(y - sy) > 10) cleanup(); return; }
+      ev.preventDefault(); show();
+    }
+    function end(ev) {
+      const was = active, tg = tgt; cleanup(); setInboxDrag(null);
+      if (was) { if (ev.cancelable) ev.preventDefault(); setTimeout(() => { touchDragging.current = false; }, 50); if (tg) onDrop(tg); }
+    }
+    function cancel() { const was = active; cleanup(); setInboxDrag(null); if (was) touchDragging.current = false; }
+    el.addEventListener('touchmove', move, { passive: false });
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', cancel);
+    timer = setTimeout(() => {
+      active = true; touchDragging.current = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+      setSideOpen(false); show();
+      loop = setInterval(() => {
+        const sc = document.querySelector('[data-scroller]');
+        if (sc) { const r = sc.getBoundingClientRect(); if (y < r.top + 80) sc.scrollTop -= 12; else if (y > r.bottom - 80) sc.scrollTop += 12; }
+        show();
+      }, 30);
+    }, 320);
   };
 
   /* ── carry-over of unfinished tasks ── */
@@ -1712,7 +1755,19 @@ function App() {
   const secTitle = { flex: 1, fontSize: 12, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--muted)' };
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    <div style={{ display: 'flex', height: '100%' }}
+      onTouchStart={e => {
+        if (!narrow || e.touches.length !== 1) return;
+        const p = e.touches[0], sc = document.querySelector('[data-scroller]');
+        swipe.current = { x: p.clientX, y: p.clientY, t: Date.now(), skip: !!e.target.closest('.hscroll, input, textarea, select') || (view === 'week' && sc && sc.scrollLeft > 0) };
+      }}
+      onTouchEnd={e => {
+        const sw = swipe.current; swipe.current = null;
+        if (!sw || sw.skip || touchDragging.current || modal || menu || moreOpen || syncChoice) return;
+        const p = e.changedTouches[0], dx = p.clientX - sw.x, dy = p.clientY - sw.y;
+        if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - sw.t > 800) return;
+        if (!sideOpen && dx > 0) setSideOpen(true); else if (sideOpen && dx < 0) setSideOpen(false);
+      }}>
       {narrow && sideOpen && <div onClick={() => setSideOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 94 }} />}
       {/* sidebar */}
       <aside style={{ width: narrow ? 'min(300px, 86vw)' : 264, flex: 'none', borderRight: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', flexDirection: 'column', padding: '14px 12px', gap: 14, overflow: 'auto', ...sideStyle }}>
@@ -1729,10 +1784,10 @@ function App() {
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 6px 6px' }}>
             <div style={secTitle}>Pending tasks</div>
-            <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{inbox.length ? 'drag onto calendar' : 'unscheduled'}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{inbox.length ? (narrow ? 'hold & drag onto calendar' : 'drag onto calendar') : 'unscheduled'}</div>
           </div>
           {inbox.map(t => (
-            <div key={t.id} className="stamp" onMouseDown={e => startInboxDrag(e, t, tgt => scheduleInbox(t, tgt))} style={{ cursor: 'grab', userSelect: 'none' }} title="Drag onto the calendar">
+            <div key={t.id} className="stamp" onMouseDown={e => startInboxDrag(e, t, tgt => scheduleInbox(t, tgt))} onTouchStart={e => startTouchDrag(e, t, tgt => scheduleInbox(t, tgt))} onContextMenu={e => e.preventDefault()} style={{ cursor: 'grab', userSelect: 'none' }} title="Drag onto the calendar">
               <span style={{ width: 10, height: 10, borderRadius: 3, background: t.color, flex: 'none' }} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</span>
@@ -1773,10 +1828,10 @@ function App() {
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', padding: '0 6px 6px' }}>
             <div style={secTitle}>Quick Stamp</div>
-            <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>click or drag · by use</div>
+            <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{narrow ? 'tap · or hold & drag' : 'click or drag · by use'}</div>
           </div>
           {sortedTasks.map(t => (
-            <button key={t.id} className="stamp" onClick={() => stamp(t)} onMouseDown={e => startInboxDrag(e, { title: t.name, dur: t.dur, color: t.color }, tgt => stampAt(t, tgt))} style={{ cursor: 'grab', userSelect: 'none' }} title="Click to append to the selected day · drag onto the calendar">
+            <button key={t.id} className="stamp" onClick={() => stamp(t)} onMouseDown={e => startInboxDrag(e, { title: t.name, dur: t.dur, color: t.color }, tgt => stampAt(t, tgt))} onTouchStart={e => startTouchDrag(e, { title: t.name, dur: t.dur, color: t.color }, tgt => stampAt(t, tgt))} onContextMenu={e => e.preventDefault()} style={{ cursor: 'grab', userSelect: 'none' }} title="Click to append to the selected day · drag onto the calendar">
               <span style={{ width: 10, height: 10, borderRadius: 3, background: t.color, flex: 'none' }} />
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</span>
@@ -1913,7 +1968,7 @@ function App() {
         onExtend={m => overrun(settings.focus.date, settings.focus.id, m)} onStop={() => patchCfg({ focus: null })} />}
 
       {inboxDrag && (
-        <div style={{ position: 'fixed', left: inboxDrag.x + 14, top: inboxDrag.y + 14, zIndex: 300, pointerEvents: 'none', background: inboxDrag.t.color + 'cc', color: '#101114', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 500, boxShadow: '0 6px 18px rgba(0,0,0,.4)' }}>
+        <div style={{ position: 'fixed', left: inboxDrag.touch ? Math.max(8, Math.min(inboxDrag.x - 40, window.innerWidth - 230)) : inboxDrag.x + 14, top: inboxDrag.touch ? inboxDrag.y - 78 : inboxDrag.y + 14, zIndex: 300, pointerEvents: 'none', background: inboxDrag.t.color + 'cc', color: '#101114', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontWeight: 500, boxShadow: '0 6px 18px rgba(0,0,0,.4)' }}>
           {inboxDrag.t.title}
           <span className="mono" style={{ marginLeft: 8, opacity: .8 }}>{inboxDrag.tgt ? (inboxDrag.tgt.start != null ? fmtRange(inboxDrag.tgt.start, inboxDrag.tgt.start + inboxDrag.t.dur) : 'add to day') : 'drop on calendar'}</span>
         </div>
