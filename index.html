@@ -56,9 +56,9 @@
   @keyframes slideup { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
   .sheet-item { display: flex; width: 100%; align-items: center; gap: 16px; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 0 20px; min-height: 54px; font-size: 16px; }
   .sheet-item:active { background: var(--surface3); }
-  .fab { position: fixed; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 32px; line-height: 1; display: grid; place-items: center; box-shadow: 0 6px 20px rgba(0,0,0,.45); z-index: 80; }
+  .fab { position: fixed; right: 16px; bottom: calc(66px + env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-size: 32px; line-height: 1; display: grid; place-items: center; box-shadow: 0 6px 20px rgba(0,0,0,.45); z-index: 80; }
   .fab:active { transform: scale(.94); }
-  .navtab { flex: 1; background: transparent; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; color: var(--muted); min-height: 56px; }
+  .navtab { flex: 1; background: transparent; border: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 10.5px; color: var(--muted); min-height: 50px; padding: 0; }
   .navtab.on { color: var(--accent); }
   .btn.sm { padding: 6px 12px; font-size: 12.5px; flex: none; }
   .hscroll { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -220,7 +220,7 @@ function finishEarly(list, id, finishMin, pull) {
   const oldEnd = bEnd(a), oldEff = eff(a);
   const dur = clamp(Math.round(finishMin) - a.start, 1, 1440 - a.start);
   const saved = a.dur - dur;
-  let out = list.map(b => (b.id === id ? { ...b, dur, plan: b.plan || b.dur, done: true, doneAt: a.start + dur } : b));
+  let out = list.map(b => (b.id === id ? { ...b, dur, plan: b.plan || b.dur, done: true, skipped: false, doneAt: a.start + dur } : b));
   if (saved > 0 && pull) {
     const later = out.filter(b => b.id !== id && b.start >= a.start).sort(byStart);
     let prevEnd = a.start + oldEff;
@@ -237,15 +237,15 @@ function finishEarly(list, id, finishMin, pull) {
 }
 function dayStats(list, hardStop, workStart) {
   const s = [...list].sort(byStart);
-  let planned = 0, deep = 0, done = 0, saved = 0, over = 0, late = 0, endMax = 0;
+  let planned = 0, deep = 0, done = 0, skipped = 0, saved = 0, over = 0, late = 0, endMax = 0;
   s.forEach((b, i) => {
-    planned += b.dur; if (b.cat === 'Deep Work') deep += b.dur; if (b.done) done++;
+    planned += b.dur; if (b.cat === 'Deep Work') deep += b.dur; if (b.done) done++; if (b.skipped) skipped++;
     if (b.plan && b.plan > b.dur) saved += b.plan - b.dur;
     if (bEnd(b) > hardStop) late++;
     if (i && b.start < endMax) over++;
     endMax = Math.max(endMax, bEnd(b));
   });
-  return { planned, deep, done, count: s.length, saved, over, late, window: Math.max(0, hardStop - workStart) };
+  return { planned, deep, done, skipped, count: s.length, saved, over, late, window: Math.max(0, hardStop - workStart) };
 }
 const ovl = (b, a, e) => Math.max(0, Math.min(bEnd(b), e) - Math.max(b.start, a));
 /* calendar import / export */
@@ -305,7 +305,7 @@ function download(name, text, type) {
 function planReopt(list, isToday, nowMin, hardStop) {
   const sorted = [...list].sort(byStart);
   const nowC = ceil15(nowMin);
-  const isFixed = b => b.done || (isToday && b.start < nowC);
+  const isFixed = b => b.done || b.skipped || (isToday && b.start < nowC);
   const fixed = sorted.filter(isFixed), remaining = sorted.filter(b => !isFixed(b));
   let cursor = isToday ? nowC : (remaining.length ? remaining[0].start : 9 * 60);
   if (isToday) cursor = Math.max(cursor, ...fixed.filter(b => b.start < nowC).map(bEnd));
@@ -475,6 +475,10 @@ function BlockModal({ mode, initial, onSave, onDelete, onClose }) {
             <button type="button" className={'pill' + (f.status === 'tentative' ? ' on' : '')} onClick={() => set('status', 'tentative')}>Tentative</button>
           </div>
         </div>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.4 }}>
+          <input type="checkbox" style={{ marginTop: 2 }} checked={!!f.essential} onChange={e => set('essential', e.target.checked)} />
+          <span><b style={{ color: '#fdd663' }}>★ Essential task</b> — it can only be skipped by giving a reason, which is logged in Stats.</span>
+        </label>
         <div style={{ marginBottom: 14 }}>
           <label className="lbl">Repeat</label>
           <select className="field" value={f.rec} onChange={e => set('rec', e.target.value)}>
@@ -808,12 +812,13 @@ function ShortcutsModal({ onClose }) {
 
 function SummaryBar({ st, hardStop, compact }) {
   if (!st.count) return null;
-  const chip = (txt, warn, key) => <span key={key} style={{ flex: 'none', fontSize: compact ? 11.5 : 12, padding: compact ? '2px 9px' : '3px 10px', borderRadius: 999, border: `1px solid ${warn ? 'var(--warn)' : 'var(--line-strong)'}`, color: warn ? 'var(--warn)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{txt}</span>;
-  const r = 9, C = 2 * Math.PI * r, frac = st.done / st.count;
+  const chip = (txt, warn, key) => <span key={key} style={{ flex: 'none', fontSize: compact ? 11.5 : 12, padding: compact ? '1px 8px' : '3px 10px', borderRadius: 999, border: `1px solid ${warn ? 'var(--warn)' : 'var(--line-strong)'}`, color: warn ? 'var(--warn)' : 'var(--muted)', whiteSpace: 'nowrap' }}>{txt}</span>;
+  const r = 9, C = 2 * Math.PI * r, frac = st.done / Math.max(1, st.count - st.skipped);
   return (
-    <div className={compact ? 'hscroll' : ''} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: compact ? '6px 12px' : '8px 16px', borderBottom: '1px solid var(--line)', flexWrap: compact ? 'nowrap' : 'wrap' }}>
-      <svg style={{ flex: 'none' }} width="24" height="24" viewBox="0 0 24 24" aria-label="Progress"><circle cx="12" cy="12" r={r} fill="none" stroke="var(--surface3)" strokeWidth="3" /><circle cx="12" cy="12" r={r} fill="none" stroke="#81c995" strokeWidth="3" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - frac)} transform="rotate(-90 12 12)" /></svg>
-      {chip(`✓ ${st.done}/${st.count} done`, false, 'd')}
+    <div className={compact ? 'hscroll' : ''} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: compact ? '4px 12px' : '8px 16px', borderBottom: '1px solid var(--line)', flexWrap: compact ? 'nowrap' : 'wrap' }}>
+      <svg style={{ flex: 'none' }} width={compact ? 20 : 24} height={compact ? 20 : 24} viewBox="0 0 24 24" aria-label="Progress"><circle cx="12" cy="12" r={r} fill="none" stroke="var(--surface3)" strokeWidth="3" /><circle cx="12" cy="12" r={r} fill="none" stroke="#81c995" strokeWidth="3" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - frac)} transform="rotate(-90 12 12)" /></svg>
+      {chip(`✓ ${st.done}/${st.count - st.skipped} done`, false, 'd')}
+      {st.skipped > 0 && chip(`⏭ ${st.skipped} skipped`, false, 'sk')}
       {chip(`⏱ ${fmtDur(st.planned)} planned`, false, 'p')}
       {st.saved > 0 && chip(`⚡ ${fmtDur(st.saved)} saved by finishing early`, false, 's')}
       {st.over > 0 && chip(`⚠ ${st.over} overlapping block${st.over > 1 ? 's' : ''}`, true, 'o')}
@@ -931,6 +936,133 @@ function AccountModal({ user, status, onSyncNow, onSignOut, onClose }) {
   );
 }
 
+/* ───────────── skip a task ───────────── */
+function SkipModal({ block, onApply, onClose }) {
+  const [reason, setReason] = useState('');
+  const need = !!block.essential, ok = !need || reason.trim().length > 0;
+  return (
+    <Modal title="Skip this task?" onClose={onClose} width={420}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <span style={{ width: 8, height: 34, borderRadius: 3, background: block.color }} />
+        <div><div style={{ fontWeight: 500 }}>{block.essential && <span style={{ color: '#fdd663' }}>★ </span>}{block.title}</div><div className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>{fmtRange(block.start, bEnd(block))}</div></div>
+      </div>
+      {need && <div style={{ background: 'rgba(253,214,99,.10)', border: '1px solid rgba(253,214,99,.45)', color: '#fdd663', borderRadius: 10, padding: '9px 12px', fontSize: 13, marginBottom: 12 }}>★ This is an essential task. Please give a reason — it will be logged in your Stats.</div>}
+      <label className="lbl">{need ? 'Reason (required)' : 'Reason (optional)'}</label>
+      <textarea className="field" rows={3} autoFocus value={reason} onChange={e => setReason(e.target.value)} placeholder="Why are you skipping it?" style={{ resize: 'vertical', marginBottom: 8 }} />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+        {['Feeling unwell', 'Ran out of time', 'Rescheduled', 'No longer needed', 'Emergency'].map(r => <button key={r} type="button" className="chip" style={{ fontFamily: 'inherit', fontSize: 12 }} onClick={() => setReason(r)}>{r}</button>)}
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn primary" disabled={!ok} style={{ opacity: ok ? 1 : .5 }} onClick={() => onApply(reason)}>Skip task</button>
+      </div>
+    </Modal>
+  );
+}
+
+/* ───────────── stats page ───────────── */
+function StatsView({ days, todayKey, nowMin }) {
+  const [range, setRange] = useState(30);
+  const [tab, setTab] = useState('tasks');
+  const [open, setOpen] = useState(null);
+  const { groups, log, t } = useMemo(() => {
+    const from = range === 0 ? '0000-00-00' : dkey(addDays(pkey(todayKey), -(range - 1)));
+    const map = new Map(), log = [], t = { done: 0, skipped: 0, missed: 0, essSkipped: 0 };
+    Object.keys(days).sort().forEach(k => {
+      if (k < from || k > todayKey) return;
+      days[k].forEach(b => {
+        const past = k < todayKey || bEnd(b) <= nowMin;
+        const st = b.skipped ? 'skipped' : b.done ? 'done' : past ? 'missed' : null;
+        if (!st) return;
+        const key = b.title.trim().toLowerCase();
+        let g = map.get(key);
+        if (!g) { g = { key, name: b.title, color: b.color, cat: b.cat, essential: false, done: [], skipped: [], missed: [] }; map.set(key, g); }
+        g.color = b.color; g.essential = g.essential || !!b.essential; g[st].push({ k, b });
+        t[st]++;
+        if (st === 'skipped') { log.push({ k, b }); if (b.essential) t.essSkipped++; }
+      });
+    });
+    const groups = [...map.values()].sort((a, b) => b.done.length - a.done.length || (b.skipped.length + b.missed.length) - (a.skipped.length + a.missed.length) || a.name.localeCompare(b.name));
+    return { groups, log: log.reverse(), t };
+  }, [days, range, todayKey, Math.floor(nowMin / 15)]);
+  const total = t.done + t.skipped + t.missed, rate = total ? Math.round(t.done / total * 100) : 0;
+  const dLabel = k => pkey(k).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const Kpi = ({ l, v, c, sub }) => <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: '10px 12px', minWidth: 0 }}><div className="lbl" style={{ marginBottom: 2 }}>{l}</div><div className="mono" style={{ fontSize: 22, color: c || 'var(--text)' }}>{v}</div>{sub && <div style={{ fontSize: 11, color: 'var(--faint)' }}>{sub}</div>}</div>;
+  const badge = (txt, bg, fg = '#101114') => <span className="mono" style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.05em', background: bg, color: fg, padding: '2px 6px', borderRadius: 5 }}>{txt}</span>;
+  const stIcon = { done: ['✓', '#81c995'], skipped: ['⏭', '#fdd663'], missed: ['✕', 'var(--faint)'] };
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 14px 40px' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+        <div className="pills" style={{ display: 'flex', marginBottom: 14 }}>
+          {[[7, '7 days'], [30, '30 days'], [90, '90 days'], [0, 'All time']].map(([r, l]) => <button key={r} className={'pill' + (range === r ? ' on' : '')} style={{ flex: 1, padding: '6px 4px' }} onClick={() => setRange(r)}>{l}</button>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8, marginBottom: 16 }}>
+          <Kpi l="Done" v={t.done} c="#81c995" />
+          <Kpi l="Skipped" v={t.skipped} c="#fdd663" />
+          <Kpi l="Missed" v={t.missed} sub="past, not done" />
+          <Kpi l="Completion" v={rate + '%'} />
+          {t.essSkipped > 0 && <Kpi l="★ Essential skipped" v={t.essSkipped} c="var(--danger)" />}
+        </div>
+        <div className="pills" style={{ display: 'flex', marginBottom: 14 }}>
+          <button className={'pill' + (tab === 'tasks' ? ' on' : '')} style={{ flex: 1 }} onClick={() => setTab('tasks')}>By task</button>
+          <button className={'pill' + (tab === 'skipped' ? ' on' : '')} style={{ flex: 1 }} onClick={() => setTab('skipped')}>Skipped log ({t.skipped})</button>
+        </div>
+
+        {tab === 'tasks' && (groups.length === 0
+          ? <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 10px', fontSize: 14 }}>No history yet. Tasks you complete, skip or miss will show up here.</div>
+          : groups.map(g => {
+            const n = g.done.length + g.skipped.length + g.missed.length, isOpen = open === g.key;
+            const entries = [...g.done.map(e => ({ ...e, st: 'done' })), ...g.skipped.map(e => ({ ...e, st: 'skipped' })), ...g.missed.map(e => ({ ...e, st: 'missed' }))].sort((a, b) => (a.k < b.k ? 1 : -1));
+            return (
+              <div key={g.key} style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14, marginBottom: 8, overflow: 'hidden' }}>
+                <button onClick={() => setOpen(isOpen ? null : g.key)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 0, padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, background: g.color, flex: 'none' }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 500, overflowWrap: 'anywhere' }}>{g.essential && <span style={{ color: '#fdd663' }}>★ </span>}{g.name}</span>
+                    <span className="mono" style={{ fontSize: 13, color: '#81c995' }}>✓ {g.done.length}</span>
+                    {g.skipped.length > 0 && <span className="mono" style={{ fontSize: 13, color: '#fdd663' }}>⏭ {g.skipped.length}</span>}
+                    {g.missed.length > 0 && <span className="mono" style={{ fontSize: 13, color: 'var(--faint)' }}>✕ {g.missed.length}</span>}
+                    <span style={{ color: 'var(--faint)', fontSize: 12 }}>{isOpen ? '▾' : '▸'}</span>
+                  </div>
+                  <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', background: 'var(--surface3)', marginTop: 9 }}>
+                    <div style={{ width: `${g.done.length / n * 100}%`, background: '#81c995' }} /><div style={{ width: `${g.skipped.length / n * 100}%`, background: '#fdd663' }} /><div style={{ width: `${g.missed.length / n * 100}%`, background: 'var(--faint)' }} />
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--faint)', marginTop: 6 }}>Done {g.done.length} of {n} time{n === 1 ? '' : 's'} · {g.cat}</div>
+                </button>
+                {isOpen && (
+                  <div style={{ borderTop: '1px solid var(--line)', padding: '6px 14px 10px' }}>
+                    {entries.map((e, i) => (
+                      <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 0', fontSize: 13, borderBottom: i < entries.length - 1 ? '1px solid var(--line)' : 'none' }}>
+                        <span style={{ color: stIcon[e.st][1], width: 16, textAlign: 'center' }}>{stIcon[e.st][0]}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div>{dLabel(e.k)} <span className="mono" style={{ color: 'var(--faint)', fontSize: 11.5 }}>{fmtT(e.b.start)}</span> {e.st === 'skipped' && e.b.essential && badge('ESSENTIAL', 'var(--danger)')}</div>
+                          {e.st === 'skipped' && <div style={{ color: 'var(--muted)', fontStyle: e.b.skipReason ? 'normal' : 'italic', fontSize: 12.5, overflowWrap: 'anywhere' }}>{e.b.skipReason ? `Reason: ${e.b.skipReason}` : 'No reason given'}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }))}
+
+        {tab === 'skipped' && (log.length === 0
+          ? <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '40px 10px', fontSize: 14 }}>Nothing skipped in this period. 🎉</div>
+          : log.map(({ k, b }, i) => (
+            <div key={i} style={{ background: 'var(--surface)', border: `1px solid ${b.essential ? 'rgba(242,139,130,.55)' : 'var(--line)'}`, borderLeft: `4px solid ${b.color}`, borderRadius: 12, padding: '11px 14px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 15, fontWeight: 500, overflowWrap: 'anywhere' }}>{b.essential && <span style={{ color: '#fdd663' }}>★ </span>}{b.title}</span>
+                {b.essential && badge('ESSENTIAL', 'var(--danger)')}
+              </div>
+              <div className="mono" style={{ fontSize: 11.5, color: 'var(--faint)', margin: '3px 0 6px' }}>{dLabel(k)} · {fmtRange(b.start, bEnd(b))}{b.skippedAt ? ` · skipped ${new Date(b.skippedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}</div>
+              <div style={{ fontSize: 13.5, color: b.skipReason ? 'var(--text)' : 'var(--faint)', fontStyle: b.skipReason ? 'normal' : 'italic', overflowWrap: 'anywhere' }}>{b.skipReason ? `“${b.skipReason}”` : 'No reason given'}</div>
+            </div>
+          )))}
+      </div>
+    </div>
+  );
+}
+
 /* ───────────── phone UI pieces ───────────── */
 function ActionSheet({ block, actions, onClose }) {
   useEffect(() => { const h = e => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, [onClose]);
@@ -963,6 +1095,7 @@ function BottomNav({ view, onView }) {
     ['agenda', 'Agenda', <svg key="a" width="22" height="22" viewBox="0 0 24 24" {...ic}><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" /><circle cx="4.5" cy="12" r="1" /><circle cx="4.5" cy="18" r="1" /></svg>],
     ['week', 'Week', <svg key="w" width="22" height="22" viewBox="0 0 24 24" {...ic}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 5v14M15 5v14" /></svg>],
     ['month', 'Month', <svg key="m" width="22" height="22" viewBox="0 0 24 24" {...ic}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9.5h18M3 14.5h18M9 9.5v10.5M15 9.5v10.5" /></svg>],
+    ['stats', 'Stats', <svg key="s" width="22" height="22" viewBox="0 0 24 24" {...ic}><path d="M5 20V11M12 20V4M19 20v-6" /></svg>],
   ];
   return (
     <nav className="noswipe" style={{ display: 'flex', flex: 'none', background: 'var(--surface)', borderTop: '1px solid var(--line-strong)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -980,10 +1113,10 @@ function DateStrip({ cur, days, hidden, todayKey, onPick, onShift }) {
       {cells.map(d => {
         const k = dkey(d), sel = k === curKey, isT = k === todayKey, has = (days[k] || []).some(b => !hidden.includes(b.cat));
         return (
-          <button key={k} onClick={() => onPick(d)} style={{ flex: 1, background: 'none', border: 0, padding: '2px 0 4px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-            <span style={{ fontSize: 11, color: sel ? 'var(--accent)' : 'var(--muted)', fontWeight: 500 }}>{DOW[d.getDay()][0]}</span>
-            <span style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: sel || isT ? 700 : 400, background: sel ? 'var(--accent)' : 'transparent', color: sel ? 'var(--accent-ink)' : isT ? 'var(--accent)' : 'var(--text)', boxShadow: isT && !sel ? 'inset 0 0 0 1.5px var(--accent)' : 'none' }}>{d.getDate()}</span>
-            <span style={{ width: 5, height: 5, borderRadius: '50%', background: has ? (sel ? 'var(--accent)' : 'var(--muted)') : 'transparent' }} />
+          <button key={k} onClick={() => onPick(d)} style={{ flex: 1, background: 'none', border: 0, padding: '0 0 2px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+            <span style={{ fontSize: 10.5, color: sel ? 'var(--accent)' : 'var(--muted)', fontWeight: 500 }}>{DOW[d.getDay()][0]}</span>
+            <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: sel || isT ? 700 : 400, background: sel ? 'var(--accent)' : 'transparent', color: sel ? 'var(--accent-ink)' : isT ? 'var(--accent)' : 'var(--text)', boxShadow: isT && !sel ? 'inset 0 0 0 1.5px var(--accent)' : 'none' }}>{d.getDate()}</span>
+            <span style={{ width: 4, height: 4, borderRadius: '50%', background: has ? (sel ? 'var(--accent)' : 'var(--muted)') : 'transparent' }} />
           </button>
         );
       })}
@@ -1017,22 +1150,23 @@ function AgendaView({ dateKey, list, hidden, nowMin, isToday, hardStop, inbox, o
         if (r.gap) return <button key={'g' + i} onClick={() => onAddAt(dateKey, r.from)} style={{ display: 'block', width: '100%', background: 'none', border: '1px dashed var(--line-strong)', borderRadius: 12, color: 'var(--faint)', padding: '10px', fontSize: 13, marginBottom: 8 }}>＋ Free {fmtDur(r.to - r.from)} · {fmtRange(r.from, r.to)}</button>;
         const b = r.b, tent = b.status === 'tentative', isNow = cur && cur.id === b.id;
         return (
-          <div key={b.id} onClick={() => onOpen(dateKey, b.id)} style={{ display: 'flex', alignItems: 'stretch', gap: 12, marginBottom: 8, borderRadius: 14, background: isNow ? b.color + '2e' : 'var(--surface2)', border: tent ? `1.5px dashed ${b.color}` : `1px solid ${isNow ? b.color : 'var(--line)'}`, borderLeft: tent ? `1.5px dashed ${b.color}` : `5px solid ${b.color}`, opacity: b.done ? .6 : 1 }}>
+          <div key={b.id} onClick={() => onOpen(dateKey, b.id)} style={{ display: 'flex', alignItems: 'stretch', gap: 12, marginBottom: 8, borderRadius: 14, background: isNow ? b.color + '2e' : 'var(--surface2)', border: tent ? `1.5px dashed ${b.color}` : `1px solid ${isNow ? b.color : 'var(--line)'}`, borderLeft: tent ? `1.5px dashed ${b.color}` : `5px solid ${b.color}`, opacity: b.done || b.skipped ? .6 : 1 }}>
             <div className="mono" style={{ width: 80, flex: 'none', padding: '12px 0 12px 12px', fontSize: 12, lineHeight: 1.5, whiteSpace: 'nowrap' }}>
               <div style={{ color: 'var(--text)' }}>{fmtT(b.start)}</div><div style={{ color: 'var(--faint)' }}>{fmtDur(b.dur)}</div>
             </div>
             <div style={{ flex: 1, minWidth: 0, padding: '11px 0' }}>
-              <div style={{ fontSize: 15.5, fontWeight: 500, textDecoration: b.done ? 'line-through' : 'none', overflowWrap: 'anywhere' }}>{tent ? '? ' : ''}{b.title}</div>
+              <div style={{ fontSize: 15.5, fontWeight: 500, textDecoration: b.done || b.skipped ? 'line-through' : 'none', overflowWrap: 'anywhere' }}>{tent ? '? ' : ''}{b.essential && <span style={{ color: '#fdd663' }}>★ </span>}{b.title}</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 5, fontSize: 12, color: 'var(--muted)' }}>
                 {isNow && badge('NOW', b.color)}{!isNow && next && next.id === b.id && badge('NEXT', 'var(--muted)')}
                 <span>{b.cat}</span>{b.seriesId && <span title="Repeats">↻</span>}
                 {b.subs && b.subs.length > 0 && <span className="mono">☑ {b.subs.filter(x => x.d).length}/{b.subs.length}</span>}
-                {b.notes && <span>✎</span>}{b.overrun && badge('OVERRUN', 'var(--warn)')}{b.plan > b.dur && badge('−' + fmtDur(b.plan - b.dur), '#81c995')}
+                {b.notes && <span>✎</span>}{b.skipped && badge('SKIPPED', 'var(--muted)')}{b.overrun && badge('OVERRUN', 'var(--warn)')}{b.plan > b.dur && badge('−' + fmtDur(b.plan - b.dur), '#81c995')}
                 {b.buf > 0 && <span className="mono" style={{ color: 'var(--faint)' }}>↔ {b.buf}m</span>}
               </div>
+              {b.skipped && b.skipReason && <div style={{ fontSize: 12, color: 'var(--faint)', fontStyle: 'italic', marginTop: 4 }}>“{b.skipReason}”</div>}
             </div>
             <button aria-label={b.done ? 'Mark not done' : 'Mark done'} onClick={e => { e.stopPropagation(); onToggleDone(dateKey, b.id); }} style={{ flex: 'none', width: 52, background: 'none', border: 0, display: 'grid', placeItems: 'center' }}>
-              <span style={{ width: 26, height: 26, borderRadius: '50%', border: `2px solid ${b.color}`, background: b.done ? b.color : 'transparent', color: '#101114', fontWeight: 700, display: 'grid', placeItems: 'center', fontSize: 15 }}>{b.done ? '✓' : ''}</span>
+              <span style={{ width: 26, height: 26, borderRadius: '50%', border: `2px solid ${b.color}`, background: b.done ? b.color : 'transparent', color: b.skipped ? b.color : '#101114', fontWeight: 700, display: 'grid', placeItems: 'center', fontSize: 15 }}>{b.done ? '✓' : b.skipped ? '–' : ''}</span>
             </button>
           </div>
         );
@@ -1114,7 +1248,7 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
 
   const checkNow = () => {
     const sc = scroller.current; if (!sc || !hasToday) { setOffNow(0); return; }
-    const y = nowMin * PX_MIN + 70, top = sc.scrollTop, bottom = top + sc.clientHeight;
+    const y = nowMin * PX_MIN + (narrow && !isWeek ? 0 : 70), top = sc.scrollTop, bottom = top + sc.clientHeight;
     setOffNow(y < top + 80 ? -1 : y > bottom - 20 ? 1 : 0);
   };
   useEffect(checkNow, [Math.floor(nowMin), hasToday, isWeek, firstKey]);
@@ -1254,7 +1388,7 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
     <div ref={scroller} data-scroller="1" onScroll={checkNow} style={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', userSelect: 'none', WebkitUserSelect: 'none' }}>
       <div style={{ minWidth: minW }}>
         {/* sticky day headers */}
-        <div style={{ position: 'sticky', top: 0, zIndex: 30, display: 'flex', background: 'var(--bg)', borderBottom: '1px solid var(--line-strong)' }}>
+        <div style={{ position: 'sticky', top: 0, zIndex: 30, display: narrow && !isWeek ? 'none' : 'flex', background: 'var(--bg)', borderBottom: '1px solid var(--line-strong)' }}>
           <div style={{ width: G, flex: 'none', position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 2 }} />
           {dates.map(d => {
             const k = dkey(d), isT = k === todayKey;
@@ -1276,7 +1410,7 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
               </div>
             ))}
             {hasToday && (
-              <div className="mono" style={{ position: 'absolute', top: nowMin * PX_MIN - 9, right: 2, background: 'var(--now)', color: '#fff', fontSize: narrow ? 9 : 10, padding: '2px 4px', borderRadius: 4, zIndex: 3 }}>{fmtT(nowMin)}</div>
+              <div className="mono" style={{ position: 'absolute', top: nowMin * PX_MIN - 9, right: 2, background: 'var(--now)', color: '#fff', fontSize: narrow ? 9 : 10, padding: '2px 4px', borderRadius: 4, zIndex: 3, whiteSpace: 'nowrap' }}>{narrow ? fmtT(nowMin).replace(' pm', 'p').replace(' am', 'a') : fmtT(nowMin)}</div>
             )}
           </div>
 
@@ -1329,13 +1463,15 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
                         border: tent ? `1.5px dashed ${b.color}` : `1px solid ${b.color}80`,
                         borderLeft: tent ? `1.5px dashed ${b.color}` : `4px solid ${b.color}`,
                         borderRadius: 8, padding: h < 40 ? '1px 8px' : '5px 8px', overflow: 'hidden', cursor: 'grab', zIndex: 5, WebkitTouchCallout: 'none',
-                        opacity: dragId === b.id ? .3 : (b.done || past) ? .6 : 1,
+                        opacity: dragId === b.id ? .3 : (b.done || b.skipped || past) ? .6 : 1,
                         display: 'flex', flexDirection: h < 44 ? 'row' : 'column', alignItems: h < 44 ? 'center' : 'stretch', gap: h < 44 ? 8 : 0,
                       }}>
                       <div style={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, paddingRight: narrow ? 30 : 20 }}>
                         {tent && <span style={{ color: b.color }}>? </span>}
+                        {b.essential && <span title="Essential" style={{ color: '#fdd663' }}>★ </span>}
                         {b.seriesId && <span title="Repeats" style={{ color: b.color }}>↻ </span>}
-                        <span style={{ textDecoration: b.done ? 'line-through' : 'none' }}>{b.title}</span>
+                        <span style={{ textDecoration: b.done || b.skipped ? 'line-through' : 'none' }}>{b.title}</span>
+                        {b.skipped && <span className="mono" style={{ marginLeft: 6, fontSize: 9.5, background: 'var(--muted)', color: 'var(--bg)', padding: '1px 4px', borderRadius: 4 }}>SKIPPED</span>}
                         {b.overrun && <span className="mono" style={{ marginLeft: 6, fontSize: 9.5, background: 'var(--warn)', color: '#2a2100', padding: '1px 4px', borderRadius: 4 }}>OVERRUN</span>}
                         {b.plan > b.dur && <span className="mono" style={{ marginLeft: 6, fontSize: 9.5, background: '#81c995', color: '#0d2a14', padding: '1px 4px', borderRadius: 4 }}>−{fmtDur(b.plan - b.dur)}</span>}
                         {b.subs && b.subs.length > 0 && <span className="mono" style={{ marginLeft: 6, fontSize: 10, color: 'var(--muted)' }}>☑ {b.subs.filter(x => x.d).length}/{b.subs.length}</span>}
@@ -1346,7 +1482,7 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
                         onTouchStart={e => { e.stopPropagation(); touchAt.current = Date.now(); const p = e.touches[0]; tapRef.current = { x: p.clientX, y: p.clientY }; }}
                         onTouchEnd={e => { e.stopPropagation(); const t0 = tapRef.current, p = e.changedTouches[0]; if (t0 && Math.abs(p.clientX - t0.x) + Math.abs(p.clientY - t0.y) < 12) { e.preventDefault(); onToggleDone(k, b.id); } }}
                         style={{ position: 'absolute', top: 0, right: 0, width: narrow ? Math.min(44, Math.max(26, h - 26)) : 24, height: narrow ? Math.min(44, Math.max(26, h - 26)) : 24, display: 'grid', placeItems: 'center', cursor: 'pointer', zIndex: 2 }}>
-                        <div style={{ width: narrow ? 20 : 15, height: narrow ? 20 : 15, borderRadius: '50%', border: `1.5px solid ${b.color}`, background: b.done ? b.color : 'transparent', color: '#101114', fontSize: narrow ? 12 : 10, fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{b.done ? '✓' : ''}</div>
+                        <div style={{ width: narrow ? 20 : 15, height: narrow ? 20 : 15, borderRadius: '50%', border: `1.5px solid ${b.color}`, background: b.done ? b.color : 'transparent', color: b.skipped ? b.color : '#101114', fontSize: narrow ? 12 : 10, fontWeight: 700, display: 'grid', placeItems: 'center', lineHeight: 1 }}>{b.done ? '✓' : b.skipped ? '–' : ''}</div>
                       </div>
                       <div className="mono" style={{ fontSize: 10.5, color: b.color, whiteSpace: 'nowrap', flex: 'none', opacity: .95 }}>
                         {fmtRange(b.start, bEnd(b))}{h >= 60 && !isWeek ? ` · ${b.cat}` : ''}
@@ -1633,7 +1769,7 @@ function App() {
     const d = { ...daysRef.current };
     let prevBlk = null;
     if (orig) { prevBlk = (d[orig.date] || []).find(b => b.id === orig.id); d[orig.date] = normalize((d[orig.date] || []).filter(b => b.id !== orig.id)); }
-    const blk = { ...(prevBlk || { overrun: false }), id: orig ? orig.id : uid(), title: data.title, start: data.start, dur: data.dur, cat: data.cat, pri: data.pri, color: data.color, status: data.status, buf: data.buf || 0, notes: data.notes || '', subs: data.subs || [] };
+    const blk = { ...(prevBlk || { overrun: false }), id: orig ? orig.id : uid(), title: data.title, start: data.start, dur: data.dur, cat: data.cat, pri: data.pri, color: data.color, status: data.status, buf: data.buf || 0, notes: data.notes || '', subs: data.subs || [], essential: !!data.essential };
     const oldRec = prevBlk && prevBlk.seriesId ? (prevBlk.rec || 'daily') : 'none';
     const wantsSeries = !!data.rec && data.rec !== 'none';
     const changed = data.rec !== oldRec;
@@ -1654,7 +1790,7 @@ function App() {
           if (k < orig.date) return;
           let hit = false;
           const nl = d[k].map(b => {
-            if (b.seriesId === prevBlk.seriesId && b.id !== blk.id) { hit = true; return { ...b, title: blk.title, start: blk.start, dur: blk.dur, cat: blk.cat, pri: blk.pri, color: blk.color, status: blk.status, buf: blk.buf }; }
+            if (b.seriesId === prevBlk.seriesId && b.id !== blk.id) { hit = true; return { ...b, title: blk.title, start: blk.start, dur: blk.dur, cat: blk.cat, pri: blk.pri, color: blk.color, status: blk.status, buf: blk.buf, essential: blk.essential }; }
             return b;
           });
           if (hit) d[k] = normalize(nl);
@@ -1693,8 +1829,16 @@ function App() {
   const toggleDone = (date, id) => {
     const b = findBlock(date, id); if (!b) return;
     if (!b.done && date === todayKey && b.start <= nowMin && nowMin < bEnd(b)) { setModal({ type: 'finish', date, id }); return; }
-    setDay(date, daysRef.current[date].map(x => (x.id === id ? { ...x, done: !x.done } : x)));
+    setDay(date, daysRef.current[date].map(x => (x.id === id ? { ...x, done: !x.done, skipped: false } : x)));
   };
+  const applySkip = (date, id, reason) => {
+    const b = findBlock(date, id); if (!b) return;
+    setDay(date, daysRef.current[date].map(x => (x.id === id ? { ...x, skipped: true, done: false, skipReason: reason.trim(), skippedAt: Date.now() } : x)));
+    setModal(null);
+    if (settings.focus && settings.focus.id === id) patchCfg({ focus: null });
+    flash(`Skipped “${b.title}”`, undo);
+  };
+  const unskip = (date, id) => { setDay(date, daysRef.current[date].map(x => (x.id === id ? { ...x, skipped: false, skipReason: '' } : x))); flash('Task restored', undo); };
   const applyFinish = (date, id, fm, pull) => {
     const b = findBlock(date, id); if (!b) return;
     const saved = b.dur - (fm - b.start);
@@ -1817,7 +1961,7 @@ function App() {
     const out = [];
     for (let i = 1; i <= 7; i++) {
       const k = dkey(addDays(pkey(todayKey), -i));
-      (days[k] || []).forEach(b => { if (!b.done && !b.seriesId) out.push({ ...b, from: k }); });
+      (days[k] || []).forEach(b => { if (!b.done && !b.skipped && !b.seriesId) out.push({ ...b, from: k }); });
     }
     return out;
   }, [days, curKey, todayKey, view, cfg.carryDismissed]);
@@ -1836,9 +1980,9 @@ function App() {
   };
 
   /* ── running late ── */
-  const lateAffected = useMemo(() => (days[todayKey] || []).filter(b => b.start >= nowMin && !b.done).sort(byStart), [days, todayKey, nowMin]);
+  const lateAffected = useMemo(() => (days[todayKey] || []).filter(b => b.start >= nowMin && !b.done && !b.skipped).sort(byStart), [days, todayKey, nowMin]);
   const applyLate = delay => {
-    const list = (daysRef.current[todayKey] || []).map(b => (b.start >= nowMin && !b.done ? { ...b, start: Math.min(b.start + delay, 1440 - b.dur) } : b));
+    const list = (daysRef.current[todayKey] || []).map(b => (b.start >= nowMin && !b.done && !b.skipped ? { ...b, start: Math.min(b.start + delay, 1440 - b.dur) } : b));
     setDay(todayKey, normalize(list));
     setModal(null);
     flash(`Pushed ${lateAffected.length} task${lateAffected.length === 1 ? '' : 's'} by ${delay} min`, undo);
@@ -1906,11 +2050,11 @@ function App() {
   /* ── modal openers ── */
   const openAdd = (date = curKey, start) => {
     const s = start != null ? start : (date === todayKey ? Math.min(ceil15(nowMin), 1440 - 30) : 9 * 60);
-    setModal({ type: 'add', initial: { title: '', date, time: toHHMM(s), dur: 30, cat: 'Deep Work', pri: 'med', color: CATS['Deep Work'], status: 'confirmed', buf: 0, rec: 'none', notes: '', subs: [] } });
+    setModal({ type: 'add', initial: { title: '', date, time: toHHMM(s), dur: 30, cat: 'Deep Work', pri: 'med', color: CATS['Deep Work'], status: 'confirmed', buf: 0, rec: 'none', notes: '', subs: [], essential: false } });
   };
   const openEdit = (date, id) => {
     const b = findBlock(date, id); if (!b) return;
-    setModal({ type: 'edit', orig: { date, id }, initial: { title: b.title, date, time: toHHMM(b.start), dur: b.dur, cat: b.cat, pri: b.pri, color: b.color, status: b.status, buf: b.buf || 0, notes: b.notes || '', subs: b.subs || [], isSeries: !!b.seriesId, applyFuture: false, rec: b.seriesId ? (b.rec || 'daily') : 'none', recInit: b.seriesId ? (b.rec || 'daily') : 'none' } });
+    setModal({ type: 'edit', orig: { date, id }, initial: { title: b.title, date, time: toHHMM(b.start), dur: b.dur, cat: b.cat, pri: b.pri, color: b.color, status: b.status, buf: b.buf || 0, notes: b.notes || '', subs: b.subs || [], essential: !!b.essential, isSeries: !!b.seriesId, applyFuture: false, rec: b.seriesId ? (b.rec || 'daily') : 'none', recInit: b.seriesId ? (b.rec || 'daily') : 'none' } });
   };
 
   /* ── navigation ── */
@@ -1920,6 +2064,7 @@ function App() {
     else { const y = cur.getFullYear(), m = cur.getMonth() + dir; const dim = new Date(y, m + 1, 0).getDate(); setCur(new Date(y, m, Math.min(cur.getDate(), dim))); }
   };
   const title = useMemo(() => {
+    if (view === 'stats') return 'Task stats';
     if (view === 'day' || view === 'agenda') return cur.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     if (view === 'month') return `${MONTHS[cur.getMonth()]} ${cur.getFullYear()}`;
     const s = startOfWeek(cur), e = addDays(s, 6);
@@ -1935,6 +2080,7 @@ function App() {
     const b = findBlock(date, id); if (!b) return [];
     return [
       { icon: b.done ? '↺' : '✓', label: b.done ? 'Mark not done' : 'Mark done', run: () => toggleDone(date, id) },
+      ...(b.skipped ? [{ icon: '↩', label: 'Restore (un-skip)', run: () => unskip(date, id) }] : b.done ? [] : [{ icon: '⏭', label: b.essential ? 'Skip… (essential — reason required)' : 'Skip this task…', run: () => setModal({ type: 'skip', date, id }) }]),
       { icon: '🏁', label: 'Finish early / log finish time…', run: () => setModal({ type: 'finish', date, id }) },
       { icon: '▶', label: 'Start focus timer', run: () => patchCfg({ focus: { date, id } }) },
       '-',
@@ -1954,6 +2100,13 @@ function App() {
   const sheetActions = sheetBlock ? (() => { const a = actionsFor(sheet.date, sheet.id), i = a.findIndex(x => x.label === 'Edit…'); return i > 0 ? [a[i], ...a.filter((_, j) => j !== i)] : a; })() : [];
 
   const moreItems = [
+    ...(narrow ? [
+      { icon: '☁', label: user ? `Account & sync — ${(SYNC_LABEL[sync] || '').replace(' — will sync later', '')}` : 'Sign in to sync', run: () => (user ? setModal({ type: 'account' }) : setModal({ type: 'signin' })) },
+      { icon: '⏰', label: 'Running late…', run: () => setModal({ type: 'late' }) },
+      { icon: '✦', label: 'Re-optimize day…', run: () => { if (view === 'month' || view === 'stats') setView('day'); setModal({ type: 'reopt' }); } },
+      { icon: '⛔', label: `Hard stop: ${fmtT(hardStop)}…`, run: () => setModal({ type: 'settings' }) },
+      '-',
+    ] : []),
     { icon: '📊', label: 'Insights', run: () => setModal({ type: 'insights' }) },
     { icon: '🗂', label: 'Day templates…', run: () => setModal({ type: 'tpls' }) },
     '-',
@@ -2074,7 +2227,7 @@ function App() {
       {/* main */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         {(() => {
-          const compactTitle = view === 'month' ? `${MONTHS[cur.getMonth()].slice(0, 3)} ${cur.getFullYear()}` : (view === 'day' || view === 'agenda') ? cur.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : title;
+          const compactTitle = view === 'stats' ? 'Task stats' : view === 'month' ? `${MONTHS[cur.getMonth()].slice(0, 3)} ${cur.getFullYear()}` : (view === 'day' || view === 'agenda') ? cur.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : title;
           const cls = narrow ? 'btn sm' : 'btn';
           const hardStopEl = (
             <label style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', border: '1px solid var(--line-strong)', borderRadius: 999, padding: narrow ? '2px 3px 2px 11px' : '3px 4px 3px 12px' }}>
@@ -2109,25 +2262,28 @@ function App() {
           );
           const pillsEl = (
             <div className="pills" style={narrow ? { display: 'flex' } : {}}>
-              {['day', 'agenda', 'week', 'month'].map(v => <button key={v} className={'pill' + (view === v ? ' on' : '')} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
+              {['day', 'agenda', 'week', 'month', 'stats'].map(v => <button key={v} className={'pill' + (view === v ? ' on' : '')} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
             </div>
           );
-          if (narrow) return (
-            <header style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px 8px', borderBottom: '1px solid var(--line)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <button className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Open menu" style={{ fontSize: 20 }}>☰</button>
-                <div style={{ flex: 1, minWidth: 0, fontSize: 18, fontWeight: 500, letterSpacing: '-.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 4px' }}>{compactTitle}</div>
-                <button className="icon-btn" onClick={() => nav(-1)} aria-label="Previous" style={{ fontSize: 22 }}>‹</button>
-                <button className="icon-btn" onClick={() => nav(1)} aria-label="Next" style={{ fontSize: 22 }}>›</button>
-                <button className="btn sm" onClick={() => setCur(new Date())}>Today</button>
-                {moreEl}
-              </div>
-              {(view === 'day' || view === 'agenda') && <DateStrip cur={cur} days={days} hidden={hidden} todayKey={todayKey} onPick={setCur} onShift={n => setCur(addDays(cur, n * 7))} />}
-              <div className="hscroll" style={{ display: 'flex', gap: 6, margin: '0 -12px', padding: '0 12px' }}>
-                {undoEl}{syncEl}{lateEl}{reoptEl}{hardStopEl}
-              </div>
-            </header>
-          );
+          if (narrow) {
+            const showNav = view !== 'stats';
+            return (
+              <header style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 8px 2px', borderBottom: '1px solid var(--line)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                  <button className="icon-btn" onClick={() => setSideOpen(true)} aria-label="Open menu" style={{ fontSize: 20 }}>☰</button>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 500, letterSpacing: '-.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 4px' }}>{compactTitle}</div>
+                  {showNav && <button className="icon-btn" onClick={() => nav(-1)} aria-label="Previous" style={{ fontSize: 22 }}>‹</button>}
+                  {showNav && <button className="icon-btn" onClick={() => nav(1)} aria-label="Next" style={{ fontSize: 22 }}>›</button>}
+                  {showNav && <button className="btn sm" style={{ padding: '5px 10px', marginLeft: 2 }} onClick={() => setCur(new Date())}>Today</button>}
+                  <button className="icon-btn" aria-label="Undo" title="Undo" onClick={undo} disabled={!canUndo} style={{ color: canUndo ? 'var(--accent)' : 'var(--faint)', opacity: canUndo ? 1 : .5 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" /></svg>
+                  </button>
+                  <div style={{ position: 'relative', flex: 'none' }}>{moreEl}{(sync === 'error' || sync === 'toolarge') && <span style={{ position: 'absolute', top: 6, right: 6, width: 9, height: 9, borderRadius: '50%', background: 'var(--danger)', pointerEvents: 'none' }} />}</div>
+                </div>
+                {(view === 'day' || view === 'agenda') && <DateStrip cur={cur} days={days} hidden={hidden} todayKey={todayKey} onPick={setCur} onShift={n => setCur(addDays(cur, n * 7))} />}
+              </header>
+            );
+          }
           return (
             <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--line)', flexWrap: 'wrap' }}>
               <button className="btn" onClick={() => setCur(new Date())}>Today</button>
@@ -2143,14 +2299,16 @@ function App() {
 
         {(view === 'day' || view === 'agenda') && <SummaryBar st={stats} hardStop={hardStop} compact={narrow} />}
         {carry.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'rgba(138,180,248,.09)', borderBottom: '1px solid var(--line)', fontSize: 13, flexWrap: 'wrap' }}>
-            <span>↪ <b>{carry.length}</b> unfinished task{carry.length === 1 ? '' : 's'} from earlier days ({carry.slice(0, 2).map(b => b.title).join(', ')}{carry.length > 2 ? '…' : ''})</span>
-            <button className="btn primary" style={{ padding: '4px 12px', fontSize: 12 }} onClick={moveCarry}>Move to today</button>
-            <button className="btn ghost" style={{ padding: '4px 12px', fontSize: 12 }} onClick={() => patchCfg({ carryDismissed: todayKey })}>Dismiss</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: narrow ? '5px 12px' : '8px 16px', background: 'rgba(138,180,248,.09)', borderBottom: '1px solid var(--line)', fontSize: narrow ? 12.5 : 13, flexWrap: narrow ? 'nowrap' : 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 0, overflow: narrow ? 'hidden' : 'visible', textOverflow: 'ellipsis', whiteSpace: narrow ? 'nowrap' : 'normal' }}>↪ <b>{carry.length}</b> unfinished task{carry.length === 1 ? '' : 's'} from earlier{narrow ? '' : ` days (${carry.slice(0, 2).map(b => b.title).join(', ')}${carry.length > 2 ? '…' : ''})`}</span>
+            <button className="btn primary sm" style={{ padding: '4px 10px' }} onClick={moveCarry}>{narrow ? 'Move here' : 'Move to today'}</button>
+            <button className="btn ghost sm" style={{ padding: '4px 8px' }} onClick={() => patchCfg({ carryDismissed: todayKey })}>{narrow ? '✕' : 'Dismiss'}</button>
           </div>
         )}
 
-        {view === 'agenda'
+        {view === 'stats'
+          ? <StatsView days={days} todayKey={todayKey} nowMin={nowMin} />
+          : view === 'agenda'
           ? <AgendaView dateKey={curKey} list={days[curKey] || []} hidden={hidden} nowMin={nowMin} isToday={curKey === todayKey} hardStop={hardStop} inbox={inbox}
               onToggleDone={toggleDone} onOpen={(d, id) => setSheet({ date: d, id })} onAddAt={openAdd} onScheduleInbox={t => scheduleInbox(t, { date: curKey, start: null })} />
           : view === 'month'
@@ -2164,7 +2322,7 @@ function App() {
       <input ref={jsonRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={e => { importJSON(e.target.files[0]); e.target.value = ''; }} />
       <input ref={icsRef} type="file" accept=".ics,text/calendar" style={{ display: 'none' }} onChange={e => { importICS(e.target.files[0]); e.target.value = ''; }} />
 
-      {narrow && !modal && !sheet && !menu && !sideOpen && !syncChoice && !moreOpen && !inboxDrag && <button className="fab" aria-label="Add task" onClick={() => openAdd()}>+</button>}
+      {narrow && view !== 'stats' && !modal && !sheet && !menu && !sideOpen && !syncChoice && !moreOpen && !inboxDrag && <button className="fab" aria-label="Add task" onClick={() => openAdd()}>+</button>}
       {sheetBlock && <ActionSheet block={sheetBlock} actions={sheetActions} onClose={() => setSheet(null)} />}
       {menu && <ContextMenu menu={menu} actions={menuActions} onClose={() => setMenu(null)} />}
       {modal && (modal.type === 'add' || modal.type === 'edit') && (
@@ -2179,6 +2337,7 @@ function App() {
       )}
       {modal && modal.type === 'buf' && (() => { const b = findBlock(modal.date, modal.id); return b ? <BufferModal block={b} onApply={v => setBuf(modal.date, modal.id, v)} onClose={() => setModal(null)} /> : null; })()}
       {modal && modal.type === 'finish' && (() => { const b = findBlock(modal.date, modal.id); return b ? <FinishModal block={b} nowMin={nowMin} isToday={modal.date === todayKey} onApply={(fm, pull) => applyFinish(modal.date, modal.id, fm, pull)} onClose={() => setModal(null)} /> : null; })()}
+      {modal && modal.type === 'skip' && (() => { const b = findBlock(modal.date, modal.id); return b ? <SkipModal block={b} onApply={r => applySkip(modal.date, modal.id, r)} onClose={() => setModal(null)} /> : null; })()}
       {modal && modal.type === 'late' && <LateModal affected={lateAffected} nowMin={nowMin} onApply={applyLate} onClose={() => setModal(null)} />}
       {modal && modal.type === 'reopt' && <ReoptModal plan={reoptPlan} hardStop={hardStop} dateLabel={curKey === todayKey ? 'Today' : cur.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} onApply={applyReopt} onClose={() => setModal(null)} />}
       {modal && modal.type === 'insights' && <InsightsModal days={days} cur={cur} onClose={() => setModal(null)} />}
