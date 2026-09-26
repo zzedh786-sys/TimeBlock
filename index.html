@@ -1190,6 +1190,7 @@ function BottomNav({ view, onView }) {
     ['week', 'Week', <svg key="w" width="22" height="22" viewBox="0 0 24 24" {...ic}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M9 5v14M15 5v14" /></svg>],
     ['month', 'Month', <svg key="m" width="22" height="22" viewBox="0 0 24 24" {...ic}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9.5h18M3 14.5h18M9 9.5v10.5M15 9.5v10.5" /></svg>],
     ['stats', 'Stats', <svg key="s" width="22" height="22" viewBox="0 0 24 24" {...ic}><path d="M5 20V11M12 20V4M19 20v-6" /></svg>],
+    ['backlog', 'Backlog', <svg key="b" width="22" height="22" viewBox="0 0 24 24" {...ic}><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5" /><circle cx="12" cy="16.3" r="0.6" fill="currentColor" stroke="none" /></svg>],
   ];
   return (
     <nav className="noswipe" style={{ display: 'flex', flex: 'none', background: 'var(--surface)', borderTop: '1px solid var(--line-strong)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
@@ -1277,6 +1278,79 @@ function AgendaView({ dateKey, list, hidden, nowMin, isToday, hardStop, inbox, o
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ───────────── backlog: unfinished tasks from earlier days ───────────── */
+function BacklogRescheduleModal({ item, todayKey, nowMin, onApply, onClose }) {
+  const [date, setDate] = useState(todayKey);
+  const [time, setTime] = useState(toHHMM(date === todayKey ? ceil15(nowMin) : 9 * 60));
+  return (
+    <Modal title="Move to…" onClose={onClose} width={380}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{ width: 8, height: 34, borderRadius: 3, background: item.color, flex: 'none' }} />
+        <div style={{ minWidth: 0 }}><div style={{ fontWeight: 500, overflowWrap: 'anywhere' }}>{item.title}</div><div className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>{fmtDur(item.dur)} · {item.cat}</div></div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.3fr) minmax(0, 1fr)', gap: 10, marginBottom: 18 }}>
+        <div><label className="lbl">Date</label><input type="date" className="field" value={date} onChange={e => e.target.value && setDate(e.target.value)} /></div>
+        <div><label className="lbl">Start</label><input type="time" className="field" value={time} onChange={e => setTime(e.target.value)} /></div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button className="btn ghost" onClick={onClose}>Cancel</button>
+        <button className="btn primary" onClick={() => onApply(date, fromHHMM(time))}>Move task</button>
+      </div>
+    </Modal>
+  );
+}
+
+function BacklogView({ items, todayKey, onCheckOff, onToday, onReschedule, onDelete }) {
+  const [confirmDel, setConfirmDel] = useState(null);
+  const groups = useMemo(() => {
+    const byDate = new Map();
+    items.forEach(it => { if (!byDate.has(it.from)) byDate.set(it.from, []); byDate.get(it.from).push(it); });
+    return [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([k, list]) => ({ k, list: list.sort(byStart) }));
+  }, [items]);
+  const dLabel = k => {
+    const y = dkey(addDays(pkey(todayKey), -1));
+    if (k === y) return 'Yesterday';
+    return pkey(k).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  };
+  const iconBtn = (label, onClick, extra) => (
+    <button title={label} aria-label={label} onClick={onClick} style={{ background: 'var(--surface3)', border: '1px solid var(--line-strong)', borderRadius: 9, width: 34, height: 34, display: 'grid', placeItems: 'center', fontSize: 15, color: 'var(--text)', flex: 'none', ...extra }}>{label}</button>
+  );
+  return (
+    <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 14px 40px' }}>
+      <div style={{ maxWidth: 760, margin: '0 auto' }}>
+        {items.length === 0 && (
+          <div style={{ textAlign: 'center', color: 'var(--muted)', padding: '60px 20px' }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
+            <div style={{ fontSize: 16, color: 'var(--text)', marginBottom: 4 }}>Nothing outstanding</div>
+            <div style={{ fontSize: 13 }}>Every task from earlier days has been checked off, skipped or rescheduled.</div>
+          </div>
+        )}
+        {groups.map(g => (
+          <div key={g.k} style={{ marginBottom: 18 }}>
+            <div className="lbl" style={{ padding: '0 2px 8px', display: 'flex', alignItems: 'baseline', gap: 8 }}>{dLabel(g.k)} <span style={{ color: 'var(--faint)', textTransform: 'none', letterSpacing: 0 }}>· {g.list.length} task{g.list.length === 1 ? '' : 's'}</span></div>
+            {g.list.map(it => (
+              <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: `4px solid ${it.color}`, borderRadius: 12, padding: '10px 12px', marginBottom: 8, flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 500, overflowWrap: 'anywhere' }}>{it.essential && <span style={{ color: '#fdd663' }}>★ </span>}{it.title}</div>
+                  <div className="mono" style={{ fontSize: 11.5, color: 'var(--faint)' }}>{fmtRange(it.start, bEnd(it))} · {it.cat}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginLeft: 'auto' }}>
+                  {iconBtn('✓', () => onCheckOff(it), { color: '#81c995', borderColor: 'rgba(129,201,149,.5)' })}
+                  <button className="btn sm" onClick={() => onToday(it)}>→ Today</button>
+                  <button className="btn sm" onClick={() => onReschedule(it)}>🗓 Move…</button>
+                  {confirmDel === it.id
+                    ? <>{iconBtn('✕', () => setConfirmDel(null))}{iconBtn('🗑', () => { onDelete(it); setConfirmDel(null); }, { color: 'var(--danger)', borderColor: 'rgba(242,139,130,.5)' })}</>
+                    : <button title="Delete" aria-label="Delete" onClick={() => setConfirmDel(it.id)} style={{ background: 'none', border: 0, color: 'var(--faint)', fontSize: 13, flex: 'none', padding: 6 }}>🗑</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1683,6 +1757,7 @@ function App() {
   const [welcomed, setWelcomed] = useState(() => lsGet('tb.welcomed.v1') === '1');
   const [canUndo, setCanUndo] = useState(false);
   const [sheet, setSheet] = useState(null);
+  const [rescheduling, setRescheduling] = useState(null);
   const touchDragging = useRef(false);
   const swipe = useRef(null);
   const [sync, setSync] = useState(fb ? 'off' : 'unavailable');
@@ -2088,6 +2163,30 @@ function App() {
     }, 320);
   };
 
+  /* ── backlog: every unfinished task from before today, across all history ── */
+  const backlogItems = useMemo(() => {
+    const out = [];
+    Object.keys(days).forEach(k => {
+      if (k >= todayKey) return;
+      (days[k] || []).forEach(b => { if (!b.done && !b.skipped && !b.seriesId) out.push({ ...b, from: k }); });
+    });
+    return out;
+  }, [days, todayKey]);
+  const checkOffBacklog = it => { toggleDone(it.from, it.id); flash(`Marked “${it.title}” done`, undo); };
+  const rescheduleBacklog = (it, targetDate, targetStart) => {
+    const d = { ...daysRef.current };
+    d[it.from] = (d[it.from] || []).filter(x => x.id !== it.id);
+    const list = d[targetDate] || [];
+    let start = targetStart;
+    if (start == null) start = list.length ? Math.max(...list.map(b => bEnd(b) + (b.buf || 0))) : (targetDate === todayKey ? ceil15(nowMin) : 9 * 60);
+    start = clamp(start, 0, 1440 - it.dur);
+    const blk = { ...it }; delete blk.from; blk.start = start;
+    d[targetDate] = normalize(targetStart == null ? [...list, blk] : waterfall([...list, blk], blk.id));
+    commit(d);
+    flash(`Moved “${it.title}” to ${pkey(targetDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, undo);
+  };
+  const deleteBacklog = it => { deleteBlock(it.from, it.id); flash(`Deleted “${it.title}”`, undo); };
+
   /* ── carry-over of unfinished tasks ── */
   const carry = useMemo(() => {
     if (curKey !== todayKey || (view !== 'day' && view !== 'agenda') || cfg.carryDismissed === todayKey) return [];
@@ -2194,10 +2293,12 @@ function App() {
   const nav = dir => {
     if (view === 'day' || view === 'agenda') setCur(addDays(cur, dir));
     else if (view === 'week') setCur(addDays(cur, dir * 7));
+    else if (view === 'stats' || view === 'backlog') { /* not date-scoped */ }
     else { const y = cur.getFullYear(), m = cur.getMonth() + dir; const dim = new Date(y, m + 1, 0).getDate(); setCur(new Date(y, m, Math.min(cur.getDate(), dim))); }
   };
   const title = useMemo(() => {
     if (view === 'stats') return 'Task stats';
+    if (view === 'backlog') return 'Backlog';
     if (view === 'day' || view === 'agenda') return cur.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     if (view === 'month') return `${MONTHS[cur.getMonth()]} ${cur.getFullYear()}`;
     const s = startOfWeek(cur), e = addDays(s, 6);
@@ -2236,7 +2337,7 @@ function App() {
     ...(narrow ? [
       { icon: '☁', label: user ? `Account & sync — ${(SYNC_LABEL[sync] || '').replace(' — will sync later', '')}` : 'Sign in to sync', run: () => (user ? setModal({ type: 'account' }) : setModal({ type: 'signin' })) },
       { icon: '⏰', label: 'Running late…', run: () => setModal({ type: 'late' }) },
-      { icon: '✦', label: 'Re-optimize day…', run: () => { if (view === 'month' || view === 'stats') setView('day'); setModal({ type: 'reopt' }); } },
+      { icon: '✦', label: 'Re-optimize day…', run: () => { if (view === 'month' || view === 'stats' || view === 'backlog') setView('day'); setModal({ type: 'reopt' }); } },
       { icon: '⛔', label: `Hard stop: ${fmtT(hardStop)}…`, run: () => setModal({ type: 'settings' }) },
       '-',
     ] : []),
@@ -2368,7 +2469,7 @@ function App() {
       {/* main */}
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
         {(() => {
-          const compactTitle = view === 'stats' ? 'Task stats' : view === 'month' ? `${MONTHS[cur.getMonth()].slice(0, 3)} ${cur.getFullYear()}` : (view === 'day' || view === 'agenda') ? cur.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : title;
+          const compactTitle = view === 'stats' ? 'Task stats' : view === 'backlog' ? 'Backlog' : view === 'month' ? `${MONTHS[cur.getMonth()].slice(0, 3)} ${cur.getFullYear()}` : (view === 'day' || view === 'agenda') ? cur.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : title;
           const cls = narrow ? 'btn sm' : 'btn';
           const hardStopEl = (
             <label style={{ flex: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', border: '1px solid var(--line-strong)', borderRadius: 999, padding: narrow ? '2px 3px 2px 11px' : '3px 4px 3px 12px' }}>
@@ -2403,7 +2504,7 @@ function App() {
           );
           const pillsEl = (
             <div className="pills" style={narrow ? { display: 'flex' } : {}}>
-              {['day', 'agenda', 'week', 'month', 'stats'].map(v => <button key={v} className={'pill' + (view === v ? ' on' : '')} onClick={() => setView(v)}>{v[0].toUpperCase() + v.slice(1)}</button>)}
+              {['day', 'agenda', 'week', 'month', 'stats', 'backlog'].map(v => <button key={v} className={'pill' + (view === v ? ' on' : '')} onClick={() => setView(v)}>{v === 'backlog' && backlogItems.length > 0 ? `Backlog (${backlogItems.length})` : v[0].toUpperCase() + v.slice(1)}</button>)}
             </div>
           );
           if (narrow) {
@@ -2449,6 +2550,8 @@ function App() {
 
         {view === 'stats'
           ? <StatsView days={days} todayKey={todayKey} nowMin={nowMin} />
+          : view === 'backlog'
+          ? <BacklogView items={backlogItems} todayKey={todayKey} onCheckOff={checkOffBacklog} onToday={it => rescheduleBacklog(it, todayKey, null)} onReschedule={it => setRescheduling(it)} onDelete={deleteBacklog} />
           : view === 'agenda'
           ? <AgendaView dateKey={curKey} list={days[curKey] || []} hidden={hidden} nowMin={nowMin} isToday={curKey === todayKey} hardStop={hardStop} inbox={inbox}
               onToggleDone={toggleDone} onOpen={(d, id) => setSheet({ date: d, id })} onAddAt={openAdd} onScheduleInbox={t => scheduleInbox(t, { date: curKey, start: null })} />
@@ -2463,7 +2566,8 @@ function App() {
       <input ref={jsonRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={e => { importJSON(e.target.files[0]); e.target.value = ''; }} />
       <input ref={icsRef} type="file" accept=".ics,text/calendar" style={{ display: 'none' }} onChange={e => { importICS(e.target.files[0]); e.target.value = ''; }} />
 
-      {narrow && view !== 'stats' && !modal && !sheet && !menu && !sideOpen && !syncChoice && !moreOpen && !inboxDrag && <button className="fab" aria-label="Add task" onClick={() => openAdd()}>+</button>}
+      {narrow && view !== 'stats' && view !== 'backlog' && !modal && !sheet && !menu && !sideOpen && !syncChoice && !moreOpen && !inboxDrag && <button className="fab" aria-label="Add task" onClick={() => openAdd()}>+</button>}
+      {rescheduling && <BacklogRescheduleModal item={rescheduling} todayKey={todayKey} nowMin={nowMin} onApply={(date, start) => { rescheduleBacklog(rescheduling, date, start); setRescheduling(null); }} onClose={() => setRescheduling(null)} />}
       {sheetBlock && <ActionSheet block={sheetBlock} actions={sheetActions} onClose={() => setSheet(null)} />}
       {menu && <ContextMenu menu={menu} actions={menuActions} onClose={() => setMenu(null)} />}
       {modal && (modal.type === 'add' || modal.type === 'edit') && (
