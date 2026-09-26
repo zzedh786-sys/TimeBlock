@@ -354,18 +354,6 @@ const FB_CONFIG = {
 };
 let fb = null;
 try { if (window.firebase) { firebase.initializeApp(FB_CONFIG); fb = { auth: firebase.auth(), db: firebase.firestore() }; } } catch (e) { fb = null; }
-const randToken = () => { const b = new Uint8Array(20); crypto.getRandomValues(b); return [...b].map(x => x.toString(16).padStart(2, '0')).join(''); };
-// The public feed doc only ever holds a plain, minimal slice of the calendar (no notes/subtasks), and only a window around today.
-function trimDaysForFeed(days, todayKey) {
-  const from = dkey(addDays(pkey(todayKey), -14)), to = dkey(addDays(pkey(todayKey), 400));
-  const out = {};
-  Object.keys(days).sort().forEach(k => {
-    if (k < from || k > to) return;
-    const list = (days[k] || []).map(b => ({ title: b.title, start: b.start, dur: b.dur, cat: b.cat, status: b.status, done: !!b.done, skipped: !!b.skipped }));
-    if (list.length) out[k] = list;
-  });
-  return out;
-}
 const DEVICE = lsGet('tb.device.v1') || (() => { const d = uid(); lsSet('tb.device.v1', d); return d; })();
 async function gz(str) { return new Uint8Array(await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()); }
 async function gunz(bytes) { return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
@@ -949,72 +937,6 @@ function AccountModal({ user, status, onSyncNow, onSignOut, onClose }) {
         <button className="btn ghost" onClick={onSignOut}>Sign out</button>
         <button className="btn primary" onClick={onSyncNow}>Sync now</button>
       </div>
-    </Modal>
-  );
-}
-
-/* ───────────── calendar feed (subscribe from Apple/Google Calendar) ───────────── */
-function FeedModal({ user, base, token, status, onSaveBase, onEnable, onRegenerate, onDisable, onClose }) {
-  const [baseInput, setBaseInput] = useState(base || '');
-  const cleanBase = (base || '').replace(/\/+$/, '');
-  const url = token ? `${cleanBase}/feed/${token}` : '';
-  const webcal = url.replace(/^https?:\/\//, 'webcal://');
-  const [confirmRegen, setConfirmRegen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch (e) {} };
-  if (!user) {
-    return (
-      <Modal title="Calendar feed" onClose={onClose} width={420}>
-        <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.5 }}>Sign in first — the feed reads from your synced cloud data, so there's nothing to subscribe to until you have an account.</div>
-      </Modal>
-    );
-  }
-  return (
-    <Modal title="Calendar feed" onClose={onClose} width={460}>
-      <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>Add a link to Apple Calendar or Google Calendar as a <b>subscription</b>. Your phone's calendar then refreshes itself with whatever's on Timeblock — usually every few hours; the OS controls how often, not us. It's one-way: edits made in your phone's calendar don't come back here.</div>
-
-      {!cleanBase ? (
-        <>
-          <div style={{ background: 'var(--surface2)', borderRadius: 12, padding: '12px 14px', marginBottom: 14, fontSize: 13, lineHeight: 1.6 }}>
-            This needs one small always-on address to turn your data into a calendar file. Set it up once, free, at Cloudflare:
-            <ol style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-              <li>Sign up at <b>dash.cloudflare.com</b> (free plan).</li>
-              <li><b>Workers &amp; Pages → Create → Create Worker</b>, give it any name, and deploy it.</li>
-              <li>Open it, click <b>Edit code</b>, and paste in <span className="mono">cloudflare-worker.js</span> from the Timeblock repo, replacing everything.</li>
-              <li>Click <b>Deploy</b>, then copy the <span className="mono">workers.dev</span> URL it gives you and paste it below.</li>
-            </ol>
-          </div>
-          <label className="lbl">Your Worker's URL</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="field" placeholder="https://timeblock-feed.you.workers.dev" value={baseInput} onChange={e => setBaseInput(e.target.value)} />
-            <button className="btn primary" disabled={!baseInput.trim()} onClick={() => onSaveBase(baseInput.trim())}>Save</button>
-          </div>
-        </>
-      ) : !token ? (
-        <>
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 6 }}>Worker: <span className="mono">{cleanBase}</span> <button onClick={() => onSaveBase('')} style={{ background: 'none', border: 0, color: 'var(--accent)', fontSize: 12, padding: 0, marginLeft: 6 }}>change</button></div>
-          <button className="btn primary" style={{ marginTop: 10 }} onClick={onEnable}>Turn on calendar feed</button>
-        </>
-      ) : (
-        <>
-          <label className="lbl">Your feed link</label>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <input className="field mono" readOnly value={url} style={{ fontSize: 12 }} onFocus={e => e.target.select()} />
-            <button className="btn sm" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-            <a className="btn sm" href={webcal} style={{ textDecoration: 'none' }}>📅 Add to Apple Calendar</a>
-            <a className="btn sm" href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>📅 Add to Google Calendar</a>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--faint)', marginBottom: 16 }}>Status: {status === 'syncing' ? 'Publishing…' : status === 'error' ? 'Couldn’t publish the last update' : 'Up to date'}. Anyone with this link can see your task titles and times, so don't share it — use Regenerate if it ever leaks.</div>
-          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-            <button className="btn danger sm" onClick={onDisable}>Turn off</button>
-            {confirmRegen
-              ? <span style={{ display: 'flex', gap: 6 }}><button className="btn ghost sm" onClick={() => setConfirmRegen(false)}>Cancel</button><button className="btn sm" onClick={() => { onRegenerate(); setConfirmRegen(false); }}>Confirm new link</button></span>
-              : <button className="btn sm" onClick={() => setConfirmRegen(true)}>Regenerate link</button>}
-          </div>
-        </>
-      )}
     </Modal>
   );
 }
@@ -1761,8 +1683,6 @@ function App() {
   const [welcomed, setWelcomed] = useState(() => lsGet('tb.welcomed.v1') === '1');
   const [canUndo, setCanUndo] = useState(false);
   const [sheet, setSheet] = useState(null);
-  const [feedStatus, setFeedStatus] = useState('idle');
-  const feedKeyRef = useRef('');
   const touchDragging = useRef(false);
   const swipe = useRef(null);
   const [sync, setSync] = useState(fb ? 'off' : 'unavailable');
@@ -1892,48 +1812,6 @@ function App() {
     return () => clearTimeout(t);
   }, [days, tasks, inbox, tpls, syncSettingsKey]);
   useEffect(() => { const on = () => { if (readyRef.current && dirtyRef.current && user) { setSync('syncing'); pushNow(user.uid).then(() => setSync('synced')).catch(() => setSync('error')); } }; window.addEventListener('online', on); return () => window.removeEventListener('online', on); }, [user]);
-
-  /* ── calendar feed (publish a trimmed, plain-JSON copy for a Cloudflare Worker to turn into an .ics feed) ── */
-  const pushFeed = async () => {
-    if (!fb || !user || !settings.feedToken) return;
-    await fb.db.collection('feeds').doc(settings.feedToken).set({ uid: user.uid, updatedAt: Date.now(), days: trimDaysForFeed(daysRef.current, todayKey) });
-  };
-  useEffect(() => {
-    if (!fb || !user || !settings.feedToken || !readyRef.current) return;
-    const key = JSON.stringify(days);
-    if (key === feedKeyRef.current) return;
-    setFeedStatus('syncing');
-    const t = setTimeout(async () => { try { await pushFeed(); feedKeyRef.current = key; setFeedStatus('idle'); } catch (e) { setFeedStatus('error'); } }, 1500);
-    return () => clearTimeout(t);
-  }, [days, sync, settings.feedToken]);
-  const setFeedBase = base => patchCfg({ feedWorkerBase: base || null });
-  const enableFeed = async () => {
-    if (!user) { flash('Sign in first'); return; }
-    const token = randToken();
-    patchCfg({ feedToken: token });
-    setFeedStatus('syncing');
-    try { await fb.db.collection('feeds').doc(token).set({ uid: user.uid, updatedAt: Date.now(), days: trimDaysForFeed(daysRef.current, todayKey) }); feedKeyRef.current = JSON.stringify(days); setFeedStatus('idle'); flash('Calendar feed turned on'); }
-    catch (e) { setFeedStatus('error'); flash('Could not publish the feed — check your Firestore rules allow it.'); }
-  };
-  const regenerateFeed = async () => {
-    const old = settings.feedToken;
-    const token = randToken();
-    patchCfg({ feedToken: token });
-    setFeedStatus('syncing');
-    try {
-      await fb.db.collection('feeds').doc(token).set({ uid: user.uid, updatedAt: Date.now(), days: trimDaysForFeed(daysRef.current, todayKey) });
-      feedKeyRef.current = JSON.stringify(days); setFeedStatus('idle');
-      if (old) fb.db.collection('feeds').doc(old).delete().catch(() => {});
-      flash('New feed link created — update it in Calendar');
-    } catch (e) { setFeedStatus('error'); }
-  };
-  const disableFeed = () => {
-    const old = settings.feedToken;
-    patchCfg({ feedToken: null });
-    if (old && fb) fb.db.collection('feeds').doc(old).delete().catch(() => {});
-    setModal(null);
-    flash('Calendar feed turned off — remove the subscription from your calendar app too');
-  };
 
   const todayKey = dkey(now), curKey = dkey(cur);
   const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -2365,7 +2243,6 @@ function App() {
     { icon: '📊', label: 'Insights', run: () => setModal({ type: 'insights' }) },
     { icon: '🗂', label: 'Day templates…', run: () => setModal({ type: 'tpls' }) },
     { icon: '🏷', label: 'Manage categories…', run: () => setModal({ type: 'cats' }) },
-    { icon: '📅', label: 'Calendar feed (Apple/Google)…', run: () => setModal({ type: 'feed' }) },
     '-',
     { icon: '⬇', label: 'Export backup (.json)', run: exportJSON },
     { icon: '⬆', label: 'Import backup (.json)', run: () => jsonRef.current && jsonRef.current.click() },
@@ -2601,7 +2478,6 @@ function App() {
       )}
       {modal && modal.type === 'buf' && (() => { const b = findBlock(modal.date, modal.id); return b ? <BufferModal block={b} onApply={v => setBuf(modal.date, modal.id, v)} onClose={() => setModal(null)} /> : null; })()}
       {modal && modal.type === 'finish' && (() => { const b = findBlock(modal.date, modal.id); return b ? <FinishModal block={b} nowMin={nowMin} isToday={modal.date === todayKey} onApply={(fm, pull) => applyFinish(modal.date, modal.id, fm, pull)} onClose={() => setModal(null)} /> : null; })()}
-      {modal && modal.type === 'feed' && <FeedModal user={user} base={settings.feedWorkerBase} token={settings.feedToken} status={feedStatus} onSaveBase={setFeedBase} onEnable={enableFeed} onRegenerate={regenerateFeed} onDisable={disableFeed} onClose={() => setModal(null)} />}
       {modal && modal.type === 'cats' && <CategoriesModal cats={catList} counts={catUse.counts} others={catUse.others} startNew={!!modal.startNew} onAdd={addCategory} onEdit={editCategory} onDelete={deleteCategory} onClose={() => setModal(null)} />}
       {modal && modal.type === 'skip' && (() => { const b = findBlock(modal.date, modal.id); return b ? <SkipModal block={b} onApply={r => applySkip(modal.date, modal.id, r)} onClose={() => setModal(null)} /> : null; })()}
       {modal && modal.type === 'late' && <LateModal affected={lateAffected} nowMin={nowMin} onApply={applyLate} onClose={() => setModal(null)} />}
