@@ -1403,6 +1403,8 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
   const [offNow, setOffNow] = useState(0);
   const touchAt = useRef(0);
   const tapRef = useRef(null);
+  const colTouchStart = useRef(null);
+  const lastColTap = useRef({ date: null, t: 0, x: 0, y: 0 });
   const nowMin = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
   const todayKey = dkey(now);
   const firstKey = dkey(dates[0]);
@@ -1595,6 +1597,24 @@ function TimeGrid({ narrow, touchBusy, onTap, dates, days, now, hardStop, workSt
                   if (e.target !== e.currentTarget) return;
                   const r = e.currentTarget.getBoundingClientRect();
                   onAddAt(k, clamp(Math.floor((e.clientY - r.top) / PX_MIN / SLOT) * SLOT, 0, 1440 - SLOT));
+                }}
+                onTouchStart={e => { if (e.target === e.currentTarget) { const t = e.touches[0]; colTouchStart.current = { x: t.clientX, y: t.clientY }; } }}
+                onTouchEnd={e => {
+                  // Manual double-tap detection: dblclick doesn't fire reliably from a double-tap on touch devices.
+                  if (e.target !== e.currentTarget) return;
+                  const t = e.changedTouches[0];
+                  const start = colTouchStart.current; colTouchStart.current = null;
+                  const moved = start ? Math.hypot(t.clientX - start.x, t.clientY - start.y) : 999;
+                  if (moved > 12) { lastColTap.current = { date: null, t: 0, x: 0, y: 0 }; return; } // was a scroll/swipe, not a tap
+                  const now2 = Date.now(), last = lastColTap.current;
+                  if (last.date === k && now2 - last.t < 400 && Math.abs(t.clientX - last.x) < 30 && Math.abs(t.clientY - last.y) < 30) {
+                    lastColTap.current = { date: null, t: 0, x: 0, y: 0 };
+                    if (e.cancelable) e.preventDefault();
+                    const r = e.currentTarget.getBoundingClientRect();
+                    onAddAt(k, clamp(Math.floor((t.clientY - r.top) / PX_MIN / SLOT) * SLOT, 0, 1440 - SLOT));
+                  } else {
+                    lastColTap.current = { date: k, t: now2, x: t.clientX, y: t.clientY };
+                  }
                 }}
                 style={{ flex: 1, minWidth: 0, position: 'relative', height: DAY_PX, borderLeft: '1px solid var(--line)' }}>
                 <div style={{ position: 'absolute', inset: 0, backgroundImage: GRID_BG, pointerEvents: 'none' }} />
